@@ -37,6 +37,13 @@ class ReleaseTests(unittest.TestCase):
             manifest.write_text(json.dumps({'archive_sha256':'not-a-digest'}))
             with self.assertRaises(r.BuildFailure):r.pinned_sdk_sha(source,'not-a-digest')
 
+    def test_linux_native_gui_harness_has_cage_without_x11_test_server(self):
+        workflow=(Path(__file__).parent/'.github/workflows/headspace-release.yml').read_text()
+        command=next(line for line in workflow.splitlines() if 'sudo apt-get install ' in line)
+        packages=set(command.split())
+        self.assertTrue({'cage','mesa-vulkan-drivers'} <= packages)
+        self.assertFalse({'weston','xvfb','xserver-xorg-video-dummy'} & packages)
+
     def test_phase_progress_is_flushed_and_cannot_emit_arbitrary_data(self):
         target='aarch64-unknown-linux-gnu'
         with patch('builtins.print') as emit:
