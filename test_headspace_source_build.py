@@ -57,13 +57,22 @@ path = "not-a-dependency"
 
     def test_absolute_missing_and_escaping_paths_are_distinct_blockers(self):
         paths = (("/home/person/private/bloom", "absolute_dependency_path"),
+                 ("/", "absolute_dependency_path"),
+                 ("//private/SDK", "absolute_dependency_path"),
                  (r"C:\private\bloom", "absolute_dependency_path"),
+                 ("C:/private/bloom", "absolute_dependency_path"),
+                 ("C:private", "absolute_dependency_path"),
+                 (r"\private\bloom", "absolute_dependency_path"),
                  (r"\\server\private", "absolute_dependency_path"),
                  ("../external", "dependency_outside_source"),
                  (r"..\external", "dependency_outside_source"),
                  ("missing", "missing_path_dependency"))
         for value, expected in paths:
             with self.subTest(path=value), tempfile.TemporaryDirectory() as directory:
+                # The classifier uses both pure path grammars, rather than the
+                # host Path.is_absolute which differs on Windows vs POSIX.
+                self.assertEqual(build.absolute_dependency_path(value),
+                                 expected == "absolute_dependency_path")
                 root = Path(directory)
                 # JSON strings are also valid TOML basic strings for these paths.
                 self.fixture(root, "Cargo.toml", '[dependencies]\nbloom = { path = ' + json.dumps(value) + ' }\n')

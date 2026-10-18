@@ -9,7 +9,7 @@ runtime/signing qualification or published artifacts.
 import argparse
 import json
 import os
-from pathlib import Path, PureWindowsPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 import re
 import signal
 import subprocess
@@ -47,6 +47,16 @@ def contained(root, path):
         return True
     except (ValueError, OSError, RuntimeError):
         return False
+
+
+def absolute_dependency_path(value):
+    """Reject rooted paths in either grammar, regardless of the runner OS.
+
+    Windows drive-relative paths (C:SDK) are also nonportable: they depend on
+    external per-drive working directories instead of the public checkout.
+    """
+    windows = PureWindowsPath(value)
+    return PurePosixPath(value).is_absolute() or bool(windows.drive or windows.root)
 
 
 def dependency_tables(document, prefix=""):
@@ -113,7 +123,7 @@ def preflight(source):
                 dependency = table + "." + name
                 if not isinstance(value, str) or not value:
                     add(label, "invalid_dependency_path", dependency, "Path must be a nonempty string")
-                elif Path(value).is_absolute() or PureWindowsPath(value).drive or value.startswith("\\"):
+                elif absolute_dependency_path(value):
                     add(label, "absolute_dependency_path", dependency, "Cargo path dependency must be relative to public source")
                 else:
                     # Reject Windows separators on Unix too: portability must not
