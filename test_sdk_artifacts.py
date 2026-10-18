@@ -17,7 +17,7 @@ import sdk_consumer as consumer
 
 VERSION='0.1.0-alpha.1'
 SOURCE='a'*64
-PRODUCER=dict(repository=consumer.REPOSITORY,workflow='bloom-sdk.yml',run_id=123,head_sha='b'*40,recipe_revision='c'*40)
+PRODUCER=dict(repository=consumer.REPOSITORY,workflow='bloom-sdk.yml',run_id=123,head_sha='b'*40,recipe_revision='d'*40,recipe_repository='backstack.io/bloomdb',profile_path='sdk/embedded/sdk-profile.json')
 
 
 class SDKArtifactsTests(unittest.TestCase):
@@ -30,11 +30,32 @@ class SDKArtifactsTests(unittest.TestCase):
         files={name:('controlled '+name).encode()for name in sdk.FIXED_FILES}
         files['lib/bloom.lib'if system=='Windows'else'lib/libbloom.a']=b'controlled native archive'
         if system=='Darwin':files['lib/libcrypto.a']=b'exact controlled static crypto archive'
-        identity=dict(sdk_version=VERSION,source_input_sha256=SOURCE,target=target,producer=PRODUCER,private_source_revision='d'*40,private_source_subdirectory='sdk/headspace/input/bloomdb',abi=dict(os=system,arch=arch,pointer_width=64,endianness='little'))
+        identity=dict(sdk_version=VERSION,source_input_sha256=SOURCE,target=target,producer=PRODUCER,private_source_revision='d'*40,private_source_subdirectory='sdk/embedded/input/bloomdb',abi=dict(os=system,arch=arch,pointer_width=64,endianness='little'))
         return files,identity
 
     def lock(self):
-        return dict(schema_version=1,sdk_version=VERSION,source_input_sha256=SOURCE,producer=PRODUCER,targets={target:dict(artifact_name='bloom-sdk-'+VERSION+'-'+target,ciphertext_sha256='e'*64,manifest_sha256='f'*64)for target in consumer.TARGETS})
+        return dict(schema_version=2,sdk_version=VERSION,source_input_sha256=SOURCE,release=dict(repository='backstack.io/bloomdb',tag='sdk-v'+VERSION,revision='d'*40,distribution=dict(kind='gitea_generic',owner='backstack.io',package='bloomdb-sdk',version=VERSION)),producer=PRODUCER,targets={target:dict(artifact_name='bloom-sdk-'+VERSION+'-'+target,ciphertext_sha256='e'*64,manifest_sha256='f'*64,build_receipt_sha256='a'*64)for target in consumer.TARGETS})
+
+    def build_receipt(self,target):
+        return json.dumps(dict(schema_version=1,source_repository='backstack.io/bloomdb',recipe_revision='d'*40,target=target,sdk_version=VERSION,source_input_sha256=SOURCE,producer=PRODUCER,private_source_revision='d'*40,private_source_subdirectory='sdk/embedded/input/bloomdb',artifact_name='bloom-sdk-'+VERSION+'-'+target,status='passed',phase='completed',tests=dict(native_build='passed',required_sdk_semantics='passed'))).encode()
+
+    def test_sdk_smoke_architecture_checks_are_application_independent(self):
+        fixtures={
+            'x86_64-unknown-linux-gnu':b'\x7fELF\x02\x01'+bytes(12)+(62).to_bytes(2,'little'),
+            'aarch64-unknown-linux-gnu':b'\x7fELF\x02\x01'+bytes(12)+(183).to_bytes(2,'little'),
+            'x86_64-apple-darwin':b'\xcf\xfa\xed\xfe'+(0x1000007).to_bytes(4,'little'),
+            'aarch64-apple-darwin':b'\xcf\xfa\xed\xfe'+(0x100000c).to_bytes(4,'little'),
+            'x86_64-pc-windows-msvc':b'MZ'+bytes(58)+(64).to_bytes(4,'little')+b'PE\0\0'+(0x8664).to_bytes(2,'little'),
+            'aarch64-pc-windows-msvc':b'MZ'+bytes(58)+(64).to_bytes(4,'little')+b'PE\0\0'+(0xaa64).to_bytes(2,'little')}
+        with tempfile.TemporaryDirectory()as directory:
+            path=Path(directory)/'smoke'
+            for target,header in fixtures.items():
+                path.write_bytes(header+bytes(64));sdk.native_executable_arch(path,target)
+                wrong=target.replace('x86_64','aarch64')if target.startswith('x86_64')else target.replace('aarch64','x86_64')
+                with self.assertRaises(sdk.ArtifactError):sdk.native_executable_arch(path,wrong)
+            for malformed in [b'',b'MZ'+bytes(62),b'\x7fELF\x01\x01'+bytes(64)]:
+                path.write_bytes(malformed)
+                with self.assertRaises(sdk.ArtifactError):sdk.native_executable_arch(path,'x86_64-pc-windows-msvc')
 
     def test_authenticated_roundtrip_for_every_native_target_is_relocatable(self):
         for target in consumer.TARGETS:
@@ -97,28 +118,58 @@ class SDKArtifactsTests(unittest.TestCase):
             pin=dict(sdk_version=VERSION,archive_sha256=SOURCE)
             (docs/'bloom-sdk-input.json').write_text(json.dumps(pin));(docs/'bloom-sdk-lock.json').write_text(json.dumps(self.lock()))
             with self.assertRaises(sdk.ArtifactError):consumer.read_lock(source)
-            pin['private_source_revision']='d'*40;(docs/'bloom-sdk-input.json').write_text(json.dumps(pin))
+            pin['private_source_revision']='d'*40;pin['private_source_subdirectory']='sdk/embedded/input/bloomdb';(docs/'bloom-sdk-input.json').write_text(json.dumps(pin))
             target='aarch64-unknown-linux-gnu';files,identity=self.fixture(target);encrypted,metadata=sdk.make_envelope(files,identity)
-            lock=self.lock();lock['targets'][target].update(ciphertext_sha256=hashlib.sha256(encrypted).hexdigest(),manifest_sha256=hashlib.sha256(metadata).hexdigest());(docs/'bloom-sdk-lock.json').write_text(json.dumps(lock))
+            build=self.build_receipt(target);lock=self.lock();lock['targets'][target].update(ciphertext_sha256=hashlib.sha256(encrypted).hexdigest(),manifest_sha256=hashlib.sha256(metadata).hexdigest(),build_receipt_sha256=hashlib.sha256(build).hexdigest());(docs/'bloom-sdk-lock.json').write_text(json.dumps(lock))
             outside=Path(directory)/'outside';outside.mkdir()
             try:(source/'.private').symlink_to(outside,target_is_directory=True)
             except OSError:self.skipTest('Native symlinks unavailable')
-            with self.assertRaises(sdk.ArtifactError):consumer.consume(source,target,lambda url,limit:metadata if url.endswith('.manifest.json')else encrypted)
+            with self.assertRaises(sdk.ArtifactError):consumer.consume(source,target,lambda url,limit:build if 'bloom-build-'in url else metadata if url.endswith('.manifest.json')else encrypted)
             self.assertEqual(list(outside.iterdir()),[])
+
+    def test_consumer_distribution_never_redirects_or_sends_credentials(self):
+        url=consumer.BASE+VERSION+'/bloom-sdk-'+VERSION+'-aarch64-unknown-linux-gnu.aesgcm'
+        error=consumer.urllib.error.HTTPError(url,302,'redirect',{'Location':'https://git.multivac.network/backstack.io/headspace/releases/download/legacy/file'},None)
+        with patch.object(consumer.urllib.request,'build_opener')as create:
+            create.return_value.open.side_effect=error
+            with self.assertRaises(sdk.ArtifactError):consumer.read_public(url,1024)
+            self.assertEqual(create.return_value.open.call_count,1)
+            request=create.return_value.open.call_args.args[0]
+            self.assertNotIn('Authorization',request.headers)
+        for invalid in [url+'?token=private',url.replace('/api/packages/backstack.io/generic/bloomdb-sdk/','/backstack.io/headspace/'),url.replace('git.multivac.network','other.invalid')]:
+            with self.subTest(url=invalid),self.assertRaises(sdk.ArtifactError):consumer.read_public(invalid,1024)
+
+    def test_consumer_rejects_app_owned_release_or_alternate_distribution(self):
+        with tempfile.TemporaryDirectory()as directory:
+            source=Path(directory);docs=source/'docs/release';docs.mkdir(parents=True)
+            (docs/'bloom-sdk-input.json').write_text(json.dumps(dict(sdk_version=VERSION,archive_sha256=SOURCE,private_source_revision='d'*40,private_source_subdirectory='sdk/embedded/input/bloomdb')))
+            for change in ['schema','repository','tag','revision','distribution','recipe']:
+                lock=self.lock()
+                if change=='schema':lock['schema_version']=1
+                elif change=='repository':lock['release']['repository']='backstack.io/headspace'
+                elif change=='tag':lock['release']['tag']='bloom-sdk-v'+VERSION
+                elif change=='revision':lock['release']['revision']='a'*40
+                elif change=='distribution':lock['release']['distribution']['package']='headspace'
+                elif change=='recipe':lock['producer']=dict(PRODUCER,recipe_repository='backstack.io/headspace')
+                (docs/'bloom-sdk-lock.json').write_text(json.dumps(lock))
+                with self.subTest(change=change),self.assertRaises(sdk.ArtifactError):consumer.read_lock(source)
 
     def test_consumer_requires_complete_source_lock_and_uses_no_engine_input(self):
         with tempfile.TemporaryDirectory()as directory:
             source=Path(directory);docs=source/'docs/release';docs.mkdir(parents=True)
-            (docs/'bloom-sdk-input.json').write_text(json.dumps(dict(sdk_version=VERSION,archive_sha256=SOURCE,private_source_revision='d'*40,private_source_subdirectory='sdk/headspace/input/bloomdb')))
+            (docs/'bloom-sdk-input.json').write_text(json.dumps(dict(sdk_version=VERSION,archive_sha256=SOURCE,private_source_revision='d'*40,private_source_subdirectory='sdk/embedded/input/bloomdb')))
             target='aarch64-unknown-linux-gnu';files,identity=self.fixture(target);encrypted,metadata=sdk.make_envelope(files,identity)
-            lock=self.lock();lock['targets'][target].update(ciphertext_sha256=hashlib.sha256(encrypted).hexdigest(),manifest_sha256=hashlib.sha256(metadata).hexdigest())
+            build=self.build_receipt(target);lock=self.lock();lock['targets'][target].update(ciphertext_sha256=hashlib.sha256(encrypted).hexdigest(),manifest_sha256=hashlib.sha256(metadata).hexdigest(),build_receipt_sha256=hashlib.sha256(build).hexdigest())
             path=docs/'bloom-sdk-lock.json';path.write_text(json.dumps(lock))
             urls=[]
             def download(url,maximum):
-                urls.append(url);return metadata if url.endswith('.manifest.json')else encrypted
+                urls.append(url);return build if 'bloom-build-'in url else metadata if url.endswith('.manifest.json')else encrypted
             env,receipt=consumer.consume(source,target,download)
-            self.assertFalse(receipt['engine_recompiled']);self.assertFalse((source/'.private/bloomdb/src').exists());self.assertTrue((source/'.private/bloomdb/bindings/rust/Cargo.toml').is_file())
+            self.assertEqual(receipt['release'],lock['release']);self.assertFalse(receipt['engine_recompiled']);self.assertFalse((source/'.private/bloomdb/src').exists());self.assertTrue((source/'.private/bloomdb/bindings/rust/Cargo.toml').is_file())
             self.assertTrue(all(u.startswith(consumer.BASE+VERSION+'/')for u in urls));self.assertIn('BLOOM_LIB_DIR',env)
+            bad=json.loads(build);bad['status']='failed';build=json.dumps(bad).encode()
+            lock['targets'][target]['build_receipt_sha256']=hashlib.sha256(build).hexdigest();path.write_text(json.dumps(lock))
+            with self.assertRaisesRegex(sdk.ArtifactError,'native build receipt'):consumer.consume(source,target,download)
             lock['targets'].pop('x86_64-pc-windows-msvc');path.write_text(json.dumps(lock))
             with self.assertRaises(sdk.ArtifactError):consumer.read_lock(source)
 

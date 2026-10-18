@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       source_revision:
-        description: Exact public Headspace SDK recipe revision (40 hex)
+        description: Exact private Bloom source/recipe revision from pinned profile (40 hex)
         required: true
         type: string
       sdk_version:
@@ -45,7 +45,7 @@ jobs:
       - name: Offline SDK and adapter contracts
         shell: pwsh
         run: |
-          python -m unittest -v test_probe.py test_headspace_source_build.py test_headspace_release_build.py test_sdk_artifacts.py
+          python -m unittest -v test_probe.py test_headspace_source_build.py test_headspace_release_build.py test_sdk_artifacts.py test_bloom_profile.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Linux native C prerequisites
         if: runner.os == 'Linux'
@@ -62,170 +62,170 @@ jobs:
       - name: Assemble private SDK chunk 01
         shell: pwsh
         env:
-          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_01 }}
+          BLOOM_INPUT_CHUNK: ${{ secrets.BLOOM_SDK_01 }}
         run: |
-          python scripts/headspace_release_build.py append-sdk --index 1 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
+          python scripts/bloom_profile.py append-input --index 1 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Assemble private SDK chunk 02
         shell: pwsh
         env:
-          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_02 }}
+          BLOOM_INPUT_CHUNK: ${{ secrets.BLOOM_SDK_02 }}
         run: |
-          python scripts/headspace_release_build.py append-sdk --index 2 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
+          python scripts/bloom_profile.py append-input --index 2 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Assemble private SDK chunk 03
         shell: pwsh
         env:
-          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_03 }}
+          BLOOM_INPUT_CHUNK: ${{ secrets.BLOOM_SDK_03 }}
         run: |
-          python scripts/headspace_release_build.py append-sdk --index 3 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
+          python scripts/bloom_profile.py append-input --index 3 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Assemble private SDK chunk 04
         shell: pwsh
         env:
-          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_04 }}
+          BLOOM_INPUT_CHUNK: ${{ secrets.BLOOM_SDK_04 }}
         run: |
-          python scripts/headspace_release_build.py append-sdk --index 4 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
+          python scripts/bloom_profile.py append-input --index 4 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Assemble private SDK chunk 05
         shell: pwsh
         env:
-          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_05 }}
+          BLOOM_INPUT_CHUNK: ${{ secrets.BLOOM_SDK_05 }}
         run: |
-          python scripts/headspace_release_build.py append-sdk --index 5 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
+          python scripts/bloom_profile.py append-input --index 5 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Assemble private SDK chunk 06
         shell: pwsh
         env:
-          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_06 }}
+          BLOOM_INPUT_CHUNK: ${{ secrets.BLOOM_SDK_06 }}
         run: |
-          python scripts/headspace_release_build.py append-sdk --index 6 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
+          python scripts/bloom_profile.py append-input --index 6 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Assemble private SDK chunk 07
         shell: pwsh
         env:
-          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_07 }}
+          BLOOM_INPUT_CHUNK: ${{ secrets.BLOOM_SDK_07 }}
         run: |
-          python scripts/headspace_release_build.py append-sdk --index 7 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
+          python scripts/bloom_profile.py append-input --index 7 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Assemble private SDK chunk 08
         shell: pwsh
         env:
-          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_08 }}
+          BLOOM_INPUT_CHUNK: ${{ secrets.BLOOM_SDK_08 }}
         run: |
-          python scripts/headspace_release_build.py append-sdk --index 8 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
+          python scripts/bloom_profile.py append-input --index 8 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Assemble private SDK chunk 09
         shell: pwsh
         env:
-          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_09 }}
+          BLOOM_INPUT_CHUNK: ${{ secrets.BLOOM_SDK_09 }}
         run: |
-          python scripts/headspace_release_build.py append-sdk --index 9 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
+          python scripts/bloom_profile.py append-input --index 9 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Assemble private SDK chunk 10
         shell: pwsh
         env:
-          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_10 }}
+          BLOOM_INPUT_CHUNK: ${{ secrets.BLOOM_SDK_10 }}
         run: |
-          python scripts/headspace_release_build.py append-sdk --index 10 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
+          python scripts/bloom_profile.py append-input --index 10 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Assemble private SDK chunk 11
         shell: pwsh
         env:
-          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_11 }}
+          BLOOM_INPUT_CHUNK: ${{ secrets.BLOOM_SDK_11 }}
         run: |
-          python scripts/headspace_release_build.py append-sdk --index 11 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
+          python scripts/bloom_profile.py append-input --index 11 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Assemble private SDK chunk 12
         shell: pwsh
         env:
-          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_12 }}
+          BLOOM_INPUT_CHUNK: ${{ secrets.BLOOM_SDK_12 }}
         run: |
-          python scripts/headspace_release_build.py append-sdk --index 12 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
+          python scripts/bloom_profile.py append-input --index 12 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Assemble private SDK chunk 13
         shell: pwsh
         env:
-          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_13 }}
+          BLOOM_INPUT_CHUNK: ${{ secrets.BLOOM_SDK_13 }}
         run: |
-          python scripts/headspace_release_build.py append-sdk --index 13 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
+          python scripts/bloom_profile.py append-input --index 13 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Assemble private SDK chunk 14
         shell: pwsh
         env:
-          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_14 }}
+          BLOOM_INPUT_CHUNK: ${{ secrets.BLOOM_SDK_14 }}
         run: |
-          python scripts/headspace_release_build.py append-sdk --index 14 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
+          python scripts/bloom_profile.py append-input --index 14 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Assemble private SDK chunk 15
         shell: pwsh
         env:
-          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_15 }}
+          BLOOM_INPUT_CHUNK: ${{ secrets.BLOOM_SDK_15 }}
         run: |
-          python scripts/headspace_release_build.py append-sdk --index 15 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
+          python scripts/bloom_profile.py append-input --index 15 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Assemble private SDK chunk 16
         shell: pwsh
         env:
-          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_16 }}
+          BLOOM_INPUT_CHUNK: ${{ secrets.BLOOM_SDK_16 }}
         run: |
-          python scripts/headspace_release_build.py append-sdk --index 16 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
+          python scripts/bloom_profile.py append-input --index 16 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Assemble private SDK chunk 17
         shell: pwsh
         env:
-          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_17 }}
+          BLOOM_INPUT_CHUNK: ${{ secrets.BLOOM_SDK_17 }}
         run: |
-          python scripts/headspace_release_build.py append-sdk --index 17 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
+          python scripts/bloom_profile.py append-input --index 17 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Assemble private SDK chunk 18
         shell: pwsh
         env:
-          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_18 }}
+          BLOOM_INPUT_CHUNK: ${{ secrets.BLOOM_SDK_18 }}
         run: |
-          python scripts/headspace_release_build.py append-sdk --index 18 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
+          python scripts/bloom_profile.py append-input --index 18 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Assemble private SDK chunk 19
         shell: pwsh
         env:
-          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_19 }}
+          BLOOM_INPUT_CHUNK: ${{ secrets.BLOOM_SDK_19 }}
         run: |
-          python scripts/headspace_release_build.py append-sdk --index 19 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
+          python scripts/bloom_profile.py append-input --index 19 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Assemble private SDK chunk 20
         shell: pwsh
         env:
-          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_20 }}
+          BLOOM_INPUT_CHUNK: ${{ secrets.BLOOM_SDK_20 }}
         run: |
-          python scripts/headspace_release_build.py append-sdk --index 20 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
+          python scripts/bloom_profile.py append-input --index 20 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Assemble private SDK chunk 21
         shell: pwsh
         env:
-          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_21 }}
+          BLOOM_INPUT_CHUNK: ${{ secrets.BLOOM_SDK_21 }}
         run: |
-          python scripts/headspace_release_build.py append-sdk --index 21 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
+          python scripts/bloom_profile.py append-input --index 21 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Assemble private SDK chunk 22
         shell: pwsh
         env:
-          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_22 }}
+          BLOOM_INPUT_CHUNK: ${{ secrets.BLOOM_SDK_22 }}
         run: |
-          python scripts/headspace_release_build.py append-sdk --index 22 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
+          python scripts/bloom_profile.py append-input --index 22 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Assemble private SDK chunk 23
         shell: pwsh
         env:
-          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_23 }}
+          BLOOM_INPUT_CHUNK: ${{ secrets.BLOOM_SDK_23 }}
         run: |
-          python scripts/headspace_release_build.py append-sdk --index 23 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
+          python scripts/bloom_profile.py append-input --index 23 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Assemble private SDK chunk 24
         shell: pwsh
         env:
-          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_24 }}
+          BLOOM_INPUT_CHUNK: ${{ secrets.BLOOM_SDK_24 }}
         run: |
-          python scripts/headspace_release_build.py append-sdk --index 24 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
+          python scripts/bloom_profile.py append-input --index 24 --file "$env:RUNNER_TEMP/bloom-sdk-source.b64"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Native SDK compile, required semantics and encrypted envelope
         shell: pwsh

@@ -38,7 +38,7 @@ jobs:
       - name: Offline adapter contract tests
         shell: pwsh
         run: |
-          python -m unittest -v test_probe.py test_headspace_source_build.py test_headspace_release_build.py test_sdk_artifacts.py
+          python -m unittest -v test_probe.py test_headspace_source_build.py test_headspace_release_build.py test_sdk_artifacts.py test_bloom_profile.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Linux native build and packaging prerequisites
         if: runner.os == 'Linux'

@@ -36,6 +36,28 @@ def secret_key():
     return key
 
 
+def native_executable_arch(path,target):
+    """Validate SDK smoke binaries without depending on an application recipe."""
+    targets={'x86_64-unknown-linux-gnu':('ELF',62),'aarch64-unknown-linux-gnu':('ELF',183),
+             'x86_64-apple-darwin':('MachO',0x1000007),'aarch64-apple-darwin':('MachO',0x100000c),
+             'x86_64-pc-windows-msvc':('PE',0x8664),'aarch64-pc-windows-msvc':('PE',0xaa64)}
+    if target not in targets:raise ArtifactError('SDK executable target is unsupported')
+    kind,machine=targets[target]
+    with Path(path).open('rb')as handle:
+        head=handle.read(64)
+        if kind=='ELF':valid=head[:6]==b'\x7fELF\x02\x01' and int.from_bytes(head[18:20],'little')==machine
+        elif kind=='MachO':valid=head[:4]==b'\xcf\xfa\xed\xfe' and int.from_bytes(head[4:8],'little')==machine
+        else:
+            valid=len(head)==64 and head[:2]==b'MZ'
+            if valid:
+                offset=int.from_bytes(head[60:64],'little')
+                valid=64<=offset<=1024*1024
+                if valid:
+                    handle.seek(offset);pe=handle.read(6)
+                    valid=pe[:4]==b'PE\0\0' and int.from_bytes(pe[4:6],'little')==machine
+    if not valid:raise ArtifactError('SDK semantic executable architecture or format mismatch')
+
+
 def validate_manifest(manifest,target,sdk_version,source_input_sha):
     if (manifest.get('schema_version')!=1 or manifest.get('sdk_version')!=sdk_version
         or manifest.get('source_input_sha256')!=source_input_sha or manifest.get('target')!=target
@@ -121,7 +143,7 @@ def unpack_envelope(ciphertext,metadata,destination,target,sdk_version,source_in
     return manifest
 
 
-def collect_sdk(source,sdk_source,sdk_output,env):
+def collect_sdk(source,sdk_source,sdk_output,env,notices_directory=None):
     files={}
     for name in ['include/bloom.h','bindings/rust/Cargo.toml','bindings/rust/build.rs','bindings/rust/src/lib.rs']:
         path=sdk_source/name
@@ -129,7 +151,7 @@ def collect_sdk(source,sdk_source,sdk_output,env):
         files[name]=path.read_bytes()
     files['capabilities.json']=(sdk_source/'headspace-capabilities.json').read_bytes()
     for name in ['BloomDB-NOTICE.txt','cJSON-LICENSE.txt','OpenSSL-LICENSE.txt']:
-        files['notices/'+name]=(source/'packaging/notices'/name).read_bytes()
+        files['notices/'+name]=((Path(notices_directory)if notices_directory is not None else source/'packaging/notices')/name).read_bytes()
     for name in ['libbloom.a','bloom.lib']:
         path=sdk_output/'lib'/name
         if path.is_file()and not path.is_symlink():files['lib/'+name]=path.read_bytes()

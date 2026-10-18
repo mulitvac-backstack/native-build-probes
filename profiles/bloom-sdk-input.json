@@ -1,0 +1,14 @@
+{
+  "schema_version": 2,
+  "source": {
+    "repository": "https://git.multivac.network/backstack.io/bloomdb",
+    "revision": "9ed34ee94eb1a2682c2a337dcd86af83bfe3bc87",
+    "subdirectory": "sdk/embedded"
+  },
+  "sdk_version": "0.1.0-alpha.2",
+  "binding_package_version": "0.1.0",
+  "capability_profile": "headspace-embedded-sdk-v1",
+  "archive_sha256": "822a9d3e88acc3209e804c1f81dbac6c1fe4b6dc5d9f1f07dfe547664b331d3e",
+  "profile_sha256": "42e8254663ace5accfc757271d10f11794d370c89dd2ac4668ad2d8b23709c98",
+  "inventory_sha256": "7482dce9e180186129f855ab5de96b6775c1c00799b51dc38a4a315328fd0a95"
+}

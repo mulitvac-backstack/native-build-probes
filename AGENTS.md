@@ -19,3 +19,17 @@ public verification receipts may leave that lane. Keep Gitea publication outside
 the worker, with no Gitea write credential in Actions. Preserve the original
 generic and public-source development lanes. Read Headspace's
 `docs/release/trusted-build-inputs.md` and its source-pinned SDK input manifest.
+
+## Bloom-owned SDK producer and consumer boundary
+
+The authorized manual `bloom-sdk.yml` workflow executes only the immutable
+private Bloom-owned `sdk/embedded` profile/recipe pinned in
+`profiles/bloom-sdk-input.json`. It may receive bounded encrypted source secret
+chunks in ephemeral files, but no private repository credential. Only encrypted
+compiled SDKs, authenticated bounded receipts and encrypted failure diagnostics
+may leave the worker. Canonical SDK source/tag/release belongs to private Bloom;
+public Gitea generic package objects are encrypted transport only. Headspace is
+a consumer of the complete tested six-target SDK lock and must not rebuild the
+engine or fall back to source chunks. Read `docs/bloom-sdk-pipeline.md`. No paid
+resources, private source publication, raw logs or Gitea write credentials are
+authorized in the worker.

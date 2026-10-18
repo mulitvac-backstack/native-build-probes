@@ -77,3 +77,34 @@ native ARM64 DEB tool fixture also pass; that fixture is not a product release.
 Next: push the coherent adapter, stage the immutable SDK and run the six actual
 product builds. Gitea publication is separately owner-authorized and occurs only
 after real package checksums and their qualification limits are concrete.
+
+## Bloom-owned SDK alpha.2 cutover — implementation checkpoint
+
+The user explicitly required Bloom builds and releases to belong to Bloom. The
+finalized [owner pipeline](bloom-sdk-pipeline.md) now executes only the private
+Bloom source-owned profile/recipe, pinned at
+`9ed34ee94eb1a2682c2a337dcd86af83bfe3bc87` under `sdk/embedded`. Planned independent
+SDK SemVer is `0.1.0-alpha.2`; canonical tag/release is private Bloom
+`sdk-v0.1.0-alpha.2`. Public encrypted transport is the Bloom-named Gitea generic
+package. Headspace's release adapter consumes the completed six-target SDK lock,
+with no engine input or source rebuild. Existing alpha.1 releases and running
+application CI remain immutable at their original source and worker revisions.
+
+Value, scoped feasibility and design passed: prior engine native six-target
+compile/CTest/install established platform feasibility, while owner-side package
+upload/guest download/private-source denial established the new transport.
+The new producer validates its complete source/profile/inventory hashes, never
+fetches an application recipe and emits source-owned build/test provenance.
+Implementation and qualification remain in progress: 61 offline worker tests,
+Python syntax and workflow YAML checks passed for this checkpoint, including
+malformed gzip/tar constant-error boundaries before any private output is written.
+These fixtures do not replace the pending fresh alpha.2 six-target native run.
+
+The fixed worker profile pins archive SHA256
+`822a9d3e88acc3209e804c1f81dbac6c1fe4b6dc5d9f1f07dfe547664b331d3e`.
+No CI source secrets were changed and no SDK workflow dispatched by this
+checkpoint. The owner must stage the exact Bloom-owned archive through
+`sdk/embedded/stage_ci_input.py`, then explicitly dispatch `bloom-sdk.yml` with
+source revision `9ed34ee94eb1a2682c2a337dcd86af83bfe3bc87` and
+`sdk_version=0.1.0-alpha.2`. Six passing native artifacts and owner authentication
+are required before canonical Bloom publication and consumer promotion.
