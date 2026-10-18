@@ -1,0 +1,297 @@
+{
+  "date": "2026-10-18",
+  "run_id": 39151925893,
+  "run_url": "https://github.com/mulitvac-backstack/native-build-probes/actions/runs/39151925893",
+  "worker_revision": "364c3300b0595d5a8e1aef01181d4036b9fe1039",
+  "source_revision": "e7c3a5f0a936bd8e7b94695a5f4160f0bbf749ba",
+  "conclusion": "failure",
+  "results": [
+    {
+      "job": "Headspace / ubuntu-24.04-arm",
+      "job_url": "https://github.com/mulitvac-backstack/native-build-probes/actions/runs/39151925893/job/117747170929",
+      "conclusion": "failure",
+      "report": {
+        "blocker": {
+          "code": "nonportable_source_dependencies",
+          "message": "Public source Cargo path dependency preflight failed"
+        },
+        "expected_arch": "aarch64",
+        "expected_os": "Linux",
+        "formats": {
+          "deb": "not_run",
+          "rpm": "not_run"
+        },
+        "machine": {
+          "native_arch": "aarch64",
+          "os": "Linux",
+          "os_release": "6.17.0-1022-azure",
+          "process_arch": "aarch64",
+          "python_version": "3.12.3",
+          "translated": false
+        },
+        "phase": "preflight",
+        "preflight": {
+          "finding_count": 1,
+          "findings": [
+            {
+              "code": "absolute_dependency_path",
+              "dependency": "dependencies.bloomdb",
+              "detail": "Cargo path dependency must be relative to public source",
+              "manifest": "crates/headspace-core/Cargo.toml"
+            }
+          ],
+          "manifests_checked": 8,
+          "omitted_findings": 0
+        },
+        "runner": "ubuntu-24.04-arm",
+        "runtime_install_signing_publication": "not_tested",
+        "schema_version": 1,
+        "source": "https://git.multivac.network/backstack.io/headspace.git",
+        "source_revision": "e7c3a5f0a936bd8e7b94695a5f4160f0bbf749ba",
+        "status": "failed",
+        "target": "aarch64-unknown-linux-gnu",
+        "verified_source_revision": "e7c3a5f0a936bd8e7b94695a5f4160f0bbf749ba"
+      }
+    },
+    {
+      "job": "Headspace / windows-11-arm",
+      "job_url": "https://github.com/mulitvac-backstack/native-build-probes/actions/runs/39151925893/job/117747171115",
+      "conclusion": "failure",
+      "report": {
+        "blocker": {
+          "code": "nonportable_source_dependencies",
+          "message": "Public source Cargo path dependency preflight failed"
+        },
+        "expected_arch": "aarch64",
+        "expected_os": "Windows",
+        "formats": {
+          "msi": "not_run",
+          "winget": "not_run"
+        },
+        "machine": {
+          "native_arch": "aarch64",
+          "os": "Windows",
+          "os_release": "11",
+          "process_arch": "aarch64",
+          "python_version": "3.13.16",
+          "translated": false
+        },
+        "phase": "preflight",
+        "preflight": {
+          "finding_count": 1,
+          "findings": [
+            {
+              "code": "absolute_dependency_path",
+              "dependency": "dependencies.bloomdb",
+              "detail": "Cargo path dependency must be relative to public source",
+              "manifest": "crates/headspace-core/Cargo.toml"
+            }
+          ],
+          "manifests_checked": 8,
+          "omitted_findings": 0
+        },
+        "runner": "windows-11-arm",
+        "runtime_install_signing_publication": "not_tested",
+        "schema_version": 1,
+        "source": "https://git.multivac.network/backstack.io/headspace.git",
+        "source_revision": "e7c3a5f0a936bd8e7b94695a5f4160f0bbf749ba",
+        "status": "failed",
+        "target": "aarch64-pc-windows-msvc",
+        "verified_source_revision": "e7c3a5f0a936bd8e7b94695a5f4160f0bbf749ba"
+      }
+    },
+    {
+      "job": "Headspace / macos-15-intel",
+      "job_url": "https://github.com/mulitvac-backstack/native-build-probes/actions/runs/39151925893/job/117747171120",
+      "conclusion": "failure",
+      "report": {
+        "blocker": {
+          "code": "nonportable_source_dependencies",
+          "message": "Public source Cargo path dependency preflight failed"
+        },
+        "expected_arch": "x86_64",
+        "expected_os": "Darwin",
+        "formats": {
+          "app": "not_run",
+          "dmg": "not_run",
+          "homebrew": "not_run",
+          "pkg": "not_run"
+        },
+        "machine": {
+          "native_arch": "x86_64",
+          "os": "Darwin",
+          "os_release": "24.6.0",
+          "process_arch": "x86_64",
+          "python_version": "3.14.7",
+          "translated": false
+        },
+        "phase": "preflight",
+        "preflight": {
+          "finding_count": 1,
+          "findings": [
+            {
+              "code": "absolute_dependency_path",
+              "dependency": "dependencies.bloomdb",
+              "detail": "Cargo path dependency must be relative to public source",
+              "manifest": "crates/headspace-core/Cargo.toml"
+            }
+          ],
+          "manifests_checked": 8,
+          "omitted_findings": 0
+        },
+        "runner": "macos-15-intel",
+        "runtime_install_signing_publication": "not_tested",
+        "schema_version": 1,
+        "source": "https://git.multivac.network/backstack.io/headspace.git",
+        "source_revision": "e7c3a5f0a936bd8e7b94695a5f4160f0bbf749ba",
+        "status": "failed",
+        "target": "x86_64-apple-darwin",
+        "verified_source_revision": "e7c3a5f0a936bd8e7b94695a5f4160f0bbf749ba"
+      }
+    },
+    {
+      "job": "Headspace / macos-15",
+      "job_url": "https://github.com/mulitvac-backstack/native-build-probes/actions/runs/39151925893/job/117747171129",
+      "conclusion": "failure",
+      "report": {
+        "blocker": {
+          "code": "nonportable_source_dependencies",
+          "message": "Public source Cargo path dependency preflight failed"
+        },
+        "expected_arch": "aarch64",
+        "expected_os": "Darwin",
+        "formats": {
+          "app": "not_run",
+          "dmg": "not_run",
+          "homebrew": "not_run",
+          "pkg": "not_run"
+        },
+        "machine": {
+          "native_arch": "aarch64",
+          "os": "Darwin",
+          "os_release": "24.6.0",
+          "process_arch": "aarch64",
+          "python_version": "3.14.7",
+          "translated": false
+        },
+        "phase": "preflight",
+        "preflight": {
+          "finding_count": 1,
+          "findings": [
+            {
+              "code": "absolute_dependency_path",
+              "dependency": "dependencies.bloomdb",
+              "detail": "Cargo path dependency must be relative to public source",
+              "manifest": "crates/headspace-core/Cargo.toml"
+            }
+          ],
+          "manifests_checked": 8,
+          "omitted_findings": 0
+        },
+        "runner": "macos-15",
+        "runtime_install_signing_publication": "not_tested",
+        "schema_version": 1,
+        "source": "https://git.multivac.network/backstack.io/headspace.git",
+        "source_revision": "e7c3a5f0a936bd8e7b94695a5f4160f0bbf749ba",
+        "status": "failed",
+        "target": "aarch64-apple-darwin",
+        "verified_source_revision": "e7c3a5f0a936bd8e7b94695a5f4160f0bbf749ba"
+      }
+    },
+    {
+      "job": "Headspace / windows-2025",
+      "job_url": "https://github.com/mulitvac-backstack/native-build-probes/actions/runs/39151925893/job/117747171166",
+      "conclusion": "failure",
+      "report": {
+        "blocker": {
+          "code": "nonportable_source_dependencies",
+          "message": "Public source Cargo path dependency preflight failed"
+        },
+        "expected_arch": "x86_64",
+        "expected_os": "Windows",
+        "formats": {
+          "msi": "not_run",
+          "winget": "not_run"
+        },
+        "machine": {
+          "native_arch": "x86_64",
+          "os": "Windows",
+          "os_release": "2025Server",
+          "process_arch": "x86_64",
+          "python_version": "3.12.10",
+          "translated": false
+        },
+        "phase": "preflight",
+        "preflight": {
+          "finding_count": 1,
+          "findings": [
+            {
+              "code": "absolute_dependency_path",
+              "dependency": "dependencies.bloomdb",
+              "detail": "Cargo path dependency must be relative to public source",
+              "manifest": "crates/headspace-core/Cargo.toml"
+            }
+          ],
+          "manifests_checked": 8,
+          "omitted_findings": 0
+        },
+        "runner": "windows-2025",
+        "runtime_install_signing_publication": "not_tested",
+        "schema_version": 1,
+        "source": "https://git.multivac.network/backstack.io/headspace.git",
+        "source_revision": "e7c3a5f0a936bd8e7b94695a5f4160f0bbf749ba",
+        "status": "failed",
+        "target": "x86_64-pc-windows-msvc",
+        "verified_source_revision": "e7c3a5f0a936bd8e7b94695a5f4160f0bbf749ba"
+      }
+    },
+    {
+      "job": "Headspace / ubuntu-24.04",
+      "job_url": "https://github.com/mulitvac-backstack/native-build-probes/actions/runs/39151925893/job/117747171179",
+      "conclusion": "failure",
+      "report": {
+        "blocker": {
+          "code": "nonportable_source_dependencies",
+          "message": "Public source Cargo path dependency preflight failed"
+        },
+        "expected_arch": "x86_64",
+        "expected_os": "Linux",
+        "formats": {
+          "deb": "not_run",
+          "rpm": "not_run"
+        },
+        "machine": {
+          "native_arch": "x86_64",
+          "os": "Linux",
+          "os_release": "6.17.0-1022-azure",
+          "process_arch": "x86_64",
+          "python_version": "3.12.3",
+          "translated": false
+        },
+        "phase": "preflight",
+        "preflight": {
+          "finding_count": 1,
+          "findings": [
+            {
+              "code": "absolute_dependency_path",
+              "dependency": "dependencies.bloomdb",
+              "detail": "Cargo path dependency must be relative to public source",
+              "manifest": "crates/headspace-core/Cargo.toml"
+            }
+          ],
+          "manifests_checked": 8,
+          "omitted_findings": 0
+        },
+        "runner": "ubuntu-24.04",
+        "runtime_install_signing_publication": "not_tested",
+        "schema_version": 1,
+        "source": "https://git.multivac.network/backstack.io/headspace.git",
+        "source_revision": "e7c3a5f0a936bd8e7b94695a5f4160f0bbf749ba",
+        "status": "failed",
+        "target": "x86_64-unknown-linux-gnu",
+        "verified_source_revision": "e7c3a5f0a936bd8e7b94695a5f4160f0bbf749ba"
+      }
+    }
+  ],
+  "product_release_qualified": false
+}
