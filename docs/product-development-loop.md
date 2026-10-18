@@ -6,23 +6,38 @@ The owner needs reusable native build infrastructure for all products on Linux, 
 
 Observable outcome: six hosted jobs report the actual OS/CPU/compiler target, compile and run simple Rust/C programs, and expose platform constraints. macOS additionally compiles a small Metal shader and reports whether a native Metal device exists. A compiler-only check cannot establish native UI, clipboard, capture, installer, upgrade or rendering qualification.
 
-## Feasibility — in progress
+## Provider/compiler feasibility — passed (scoped experiment)
 
 Current primary sources: [GitHub runner matrix](https://docs.github.com/en/actions/reference/runners/github-hosted-runners), [billing](https://docs.github.com/en/billing/concepts/product-billing/github-actions), [OSXCross](https://github.com/tpoechtrager/osxcross), [GPUI Apple shader builder at the selected revision](https://github.com/zed-industries/zed/blob/56934ec0560bce8929025497411de7f5322fb6ca/crates/gpui_apple/build.rs).
 
-Standard hosted public-repository compute is free; private quotas, larger runners and storage are separate. This probe uses only standard public labels, no artifacts/cache, no private sources/credentials, no signing material and no spending authorization. Account eligibility and all six compiler operations require live jobs. Provider GPU availability is unknown and must be reported independently. Headspace's selected GPUI pin has host-gated shader generation, so Linux cross-compilation is conditional and is not the initial release path. OSXCross is a valid supplementary build approach, not proof that the full native product runs on macOS.
+Standard hosted public-repository compute is free; private quotas, larger runners and storage are separate. This probe uses only standard public labels, no artifacts/cache, no private sources/credentials, no signing material and no spending authorization. The public worker repository successfully ran all six compiler operations in [run 39148769789](https://github.com/mulitvac-backstack/native-build-probes/actions/runs/39148769789), source `b1646a8fe49439c84dd9b42b327649a754ceea69`. Both macOS rows compiled Metal shaders and discovered a native Metal device. No GPU commands were dispatched, so device discovery does not qualify GPU execution or rendering. This evidence establishes access and basic native compiler capability for the recorded standard hosted targets; it does not establish a complete shared service for private products. Cross-compilation remains supplementary and cannot replace native application runtime evidence.
 
-## Probe design — finalized for implementation
+## Probe design — passed
 
 One manual-only workflow with six fixed labels: ubuntu-24.04, ubuntu-24.04-arm, windows-2025, windows-11-arm, macos-15-intel, macos-15. No arbitrary repository, revision, shell or command inputs. Read-only contents permission, pinned checkout action, job time limit 15 minutes, maximum three concurrent jobs. Every job validates native machine architecture and compiler target; x64 emulation on ARM cannot satisfy the x64 row. Rust toolchain is fixed at 1.98.1. Native C compiler setup is platform-specific. The Python probe compiles/runs temporary fixture sources and emits bounded JSON and job summary, without dumping environment variables. Failure is explicit; Metal device unavailability is reported as a separate runtime capability limitation. Tests cover target normalization and architecture mismatch rejection. This design finalizes the narrow experiment only.
 
-## Implementation and testing — pending
+## Implementation — passed (compiler probe only)
 
-Source and tests are under this directory. Local tests plus actual hosted run URLs/results must be recorded before claiming provider feasibility passed. No product code, SDK or private infrastructure inventory belongs in this public experiment.
+The stdlib Python probe and fixed six-job workflow implement the finalized experiment. Sources are canonical in [Gitea](https://git.multivac.network/backstack.io/native-build-probes); the [public GitHub worker mirror](https://github.com/mulitvac-backstack/native-build-probes) executes the manual workflow. No product code, SDK or private infrastructure inventory belongs in this public experiment.
 
-First hosted [run39148518623](https://github.com/mulitvac-backstack/native-build-probes/actions/runs/39148518623), source4445d1925d3e8fe76ff98b971e36d2e8b5d0aa0c: both Linux architectures and ARM64 macOS passed native Rust/C compile-run; ARM64 macOS also compiled Metal and reported a device available (no GPU execution/rendering claim). Intel macOS failed an optional hardware sysctl missing on Intel. Both Windows rows validated native CPU/Python/Rust hosts but failed batch-file quoting during C environment setup. Exact fixture reports are preserved in [first-run.json](../verification/2026-10-18-first-run.json).
+## Testing — passed (compiler probe only)
 
-Probe repairs: Intel absence is accepted only with positive GenuineIntel vendor/native x64/non-Rosetta evidence, other query failures remain failures. Windows passes a controlled raw command line directly to CreateProcess, avoiding list2cmdline's backslash escaping of the batch path. Thirteen unit tests pass including these failure cases, secret-free summaries and allowlisted compiler environment handling. Local native ARM64 Rust/C probe passes. Hosted rerun is required before marking the repaired rows passed.
+[Passing run 39148769789](https://github.com/mulitvac-backstack/native-build-probes/actions/runs/39148769789), source `b1646a8fe49439c84dd9b42b327649a754ceea69`, passed all six native rows. Exact bounded results are retained in [passing-run.json](../verification/2026-10-18-passing-run.json).
+
+| Hosted label | Native Rust 1.98.1 + C compile/run | Metal shader / device |
+| --- | --- | --- |
+| ubuntu-24.04 | x86_64 passed | Not applicable |
+| ubuntu-24.04-arm | aarch64 passed | Not applicable |
+| windows-2025 | x86_64 passed | Not applicable |
+| windows-11-arm | aarch64 passed | Not applicable |
+| macos-15-intel | x86_64 passed | Compiled / available |
+| macos-15 | aarch64 passed | Compiled / available |
+
+Every row validated guest-visible native machine/process architecture and the exact Rust host target. Each hosted job also passed `python -m unittest -v test_probe.py` (13 tests). Local native ARM64 Rust/C compile-run passed. No GPU command buffer, application build, UI, clipboard, capture, signing, installer or upgrade was tested.
+
+First hosted [run 39148518623](https://github.com/mulitvac-backstack/native-build-probes/actions/runs/39148518623), source `4445d1925d3e8fe76ff98b971e36d2e8b5d0aa0c`: both Linux architectures and ARM64 macOS passed native Rust/C compile-run; ARM64 macOS also compiled Metal and reported a device available (no GPU execution/rendering claim). Intel macOS failed an optional hardware sysctl missing on Intel. Both Windows rows validated native CPU/Python/Rust hosts but failed batch-file quoting during C environment setup. Exact fixture reports are preserved in [first-run.json](../verification/2026-10-18-first-run.json).
+
+Probe repairs: Intel absence is accepted only with positive GenuineIntel vendor/native x64/non-Rosetta evidence, other query failures remain failures. Windows passes a controlled raw command line directly to CreateProcess, avoiding list2cmdline's backslash escaping of the batch path. Thirteen unit tests pass including these failure cases, secret-free summaries and allowlisted compiler environment handling. Local native ARM64 Rust/C probe passes. The passing rerun above verifies both repaired Windows rows and Intel macOS; the first-run record remains retained as failure evidence.
 
 ## Packaging — pending, outside this experiment
 
