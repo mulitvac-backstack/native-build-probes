@@ -30,7 +30,7 @@ class SDKArtifactsTests(unittest.TestCase):
         files={name:('controlled '+name).encode()for name in sdk.FIXED_FILES}
         files['lib/bloom.lib'if system=='Windows'else'lib/libbloom.a']=b'controlled native archive'
         if system=='Darwin':files['lib/libcrypto.a']=b'exact controlled static crypto archive'
-        identity=dict(sdk_version=VERSION,source_input_sha256=SOURCE,target=target,producer=PRODUCER,private_source_revision='d'*40,abi=dict(os=system,arch=arch,pointer_width=64,endianness='little'))
+        identity=dict(sdk_version=VERSION,source_input_sha256=SOURCE,target=target,producer=PRODUCER,private_source_revision='d'*40,private_source_subdirectory='sdk/headspace/input/bloomdb',abi=dict(os=system,arch=arch,pointer_width=64,endianness='little'))
         return files,identity
 
     def lock(self):
@@ -96,7 +96,7 @@ class SDKArtifactsTests(unittest.TestCase):
     def test_consumer_requires_complete_source_lock_and_uses_no_engine_input(self):
         with tempfile.TemporaryDirectory()as directory:
             source=Path(directory);docs=source/'docs/release';docs.mkdir(parents=True)
-            (docs/'bloom-sdk-input.json').write_text(json.dumps(dict(sdk_version=VERSION,archive_sha256=SOURCE,private_source_revision='d'*40)))
+            (docs/'bloom-sdk-input.json').write_text(json.dumps(dict(sdk_version=VERSION,archive_sha256=SOURCE,private_source_revision='d'*40,private_source_subdirectory='sdk/headspace/input/bloomdb')))
             target='aarch64-unknown-linux-gnu';files,identity=self.fixture(target);encrypted,metadata=sdk.make_envelope(files,identity)
             lock=self.lock();lock['targets'][target].update(ciphertext_sha256=hashlib.sha256(encrypted).hexdigest(),manifest_sha256=hashlib.sha256(metadata).hexdigest())
             path=docs/'bloom-sdk-lock.json';path.write_text(json.dumps(lock))

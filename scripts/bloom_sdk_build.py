@@ -49,7 +49,7 @@ def build(args):
             try:package.binary_arch(smoke,target)
             except Exception:raise BuildFailure('sdk_native_architecture','SDK semantic executable architecture differs from native target')from None
             files=collect_sdk(source,sdk,sdk_output,link)
-            identity=dict(sdk_version=version,source_input_sha256=sha,target=target,producer=producer,private_source_revision=pin.get('private_source_revision'),source_subdirectory=pin.get('source_subdirectory'),
+            identity=dict(sdk_version=version,source_input_sha256=sha,target=target,producer=producer,private_source_revision=pin.get('private_source_revision'),private_source_subdirectory=pin.get('private_source_subdirectory'),
                 abi=dict(os=system,arch=arch,pointer_width=64,endianness='little'),
                 capability_profile=pin.get('capability_profile'),binding_package_version=pin.get('binding_package_version'))
             ciphertext,manifest=make_envelope(files,identity)

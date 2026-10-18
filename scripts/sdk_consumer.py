@@ -70,8 +70,8 @@ def consume(source,target,download=read_public):
         raise ArtifactError('Durable encrypted SDK asset checksum mismatch')
     manifest=json.loads(metadata)
     pin=json.loads((source/'docs/release/bloom-sdk-input.json').read_text())
-    if pin.get('private_source_revision')and manifest.get('private_source_revision')!=pin['private_source_revision']:
-        raise ArtifactError('SDK private source revision differs from source input pin')
+    for field in ['private_source_revision','private_source_subdirectory']:
+        if pin.get(field)and manifest.get(field)!=pin[field]:raise ArtifactError('SDK private source identity differs from source input pin')
     if manifest.get('producer')!=lock['producer']:raise ArtifactError('SDK manifest producer differs from source lock')
     destination=source/'.private/bloomdb'
     if (source/'.private').is_symlink()or destination.is_symlink()or not destination.resolve().is_relative_to(source.resolve()):
