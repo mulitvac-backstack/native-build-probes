@@ -346,6 +346,14 @@ def artifact_receipt(directory, target, revision, version=None):
     return doc
 
 
+def phase_progress(target, phase, status):
+    """Only fixed public stage names cross the native build log boundary."""
+    phases = {'cargo_test', 'cargo_build', 'audit'} | {'package_' + fmt for formats in FORMATS.values() for fmt in formats}
+    if target not in {item[2] for item in probe.TARGETS.values()} or phase not in phases or status not in {'running', 'passed'}:
+        raise BuildFailure('progress_contract', 'Native stage progress is not allowlisted')
+    print(json.dumps(dict(target=target, phase=phase, status=status), separators=(',', ':')), flush=True)
+
+
 def product_cargo_command(rust, target, subcommand):
     command=rust[:-1]+['cargo',subcommand,'--locked','--target',target,'--message-format=json']
     if subcommand=='test':
@@ -387,12 +395,17 @@ def build(args):
             for phase,sub in [('cargo_test','test'),('cargo_build','build')]:
                 result['phase']=phase
                 command=product_cargo_command(rust,target,sub)
+                phase_progress(target,phase,'running')
                 run_cargo(command,phase,source,env,timeout=2400,failure_output=output,failure_identity=hosted_failure_identity(source,target,version,revision,phase,sdk_receipt['producer']['recipe_revision']));result[phase]='passed'
+                phase_progress(target,phase,'passed')
             result['phase']='package'
             for fmt in FORMATS[system]:
                 result['formats'][fmt]='running'
+                phase_progress(target,'package_'+fmt,'running')
                 run([sys.executable,str(source/'scripts/package.py'),'--target',target,'--format',fmt,'--output',str(candidate)],'package_'+fmt,cwd=source,env=env,timeout=600)
                 result['formats'][fmt]='created_unsigned_not_runtime_qualified'
+                phase_progress(target,'package_'+fmt,'passed')
+            phase_progress(target,'audit','running')
             result['phase']='artifact_audit';receipt=artifact_receipt(candidate,target,revision,version)
             result['artifact_count']=len(receipt['files'])
             verifier=source/'scripts/verify-release.py'
@@ -417,6 +430,7 @@ def build(args):
                             raise BuildFailure('verification_report','Native report exceeds public receipt bounds')
             else:
                 result['native_qualification']=dict(status='blocked',reason='Source revision has no native verifier')
+            phase_progress(target,'audit','passed')
             # Only validated compiled artifacts cross into the upload directory.
             for entry in receipt['files']:
                 shutil.copyfile(candidate/entry['path'],output/entry['path'])

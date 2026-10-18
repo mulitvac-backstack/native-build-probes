@@ -37,6 +37,18 @@ class ReleaseTests(unittest.TestCase):
             manifest.write_text(json.dumps({'archive_sha256':'not-a-digest'}))
             with self.assertRaises(r.BuildFailure):r.pinned_sdk_sha(source,'not-a-digest')
 
+    def test_phase_progress_is_flushed_and_cannot_emit_arbitrary_data(self):
+        target='aarch64-unknown-linux-gnu'
+        with patch('builtins.print') as emit:
+            r.phase_progress(target,'cargo_test','running')
+            args,kwargs=emit.call_args
+            self.assertEqual(json.loads(args[0]),dict(target=target,phase='cargo_test',status='running'))
+            self.assertEqual(kwargs,dict(flush=True))
+        for values in [(target,'/private/source','running'),(target,'cargo_build','PRIVATE'),('private-target','audit','passed')]:
+            with self.subTest(values=values),patch('builtins.print') as emit:
+                with self.assertRaises(r.BuildFailure):r.phase_progress(*values)
+                emit.assert_not_called()
+
     def test_product_checks_exclude_legacy_reference_and_build_actual_release_frontend(self):
         rust=['rustup','run','1.98.1','rustc'];target='aarch64-pc-windows-msvc'
         tests=r.product_cargo_command(rust,target,'test');build=r.product_cargo_command(rust,target,'build')
