@@ -46,6 +46,16 @@ class ReleaseTests(unittest.TestCase):
         self.assertIn('--release',build)
         self.assertIn('--locked',tests)
 
+    def test_release_semver_matches_immutable_source_not_ci_run_number(self):
+        for value in ['0.1.0-alpha.1','1.2.3','1.2.3+build.77']:
+            self.assertEqual(r.validate_version(value),value)
+        for value in ['v0.1.0','0.1.01','1.0.0-alpha.01','1.2.3;echo','1.2٣.0']:
+            with self.assertRaises(r.BuildFailure):r.validate_version(value)
+        with tempfile.TemporaryDirectory()as directory:
+            source=Path(directory);(source/'Cargo.toml').write_text('[workspace.package]\nversion="0.1.0-alpha.1"\n')
+            self.assertEqual(r.source_version(source,'0.1.0-alpha.1'),'0.1.0-alpha.1')
+            with self.assertRaises(r.BuildFailure):r.source_version(source,'0.1.77')
+
     def test_sdk_chunks_are_bounded_and_counted(self):
         with tempfile.TemporaryDirectory()as directory:
             path=Path(directory)/'sdk'

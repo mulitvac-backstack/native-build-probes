@@ -16,6 +16,7 @@ import shutil
 import sys
 import tarfile
 import tempfile
+import tomllib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import probe
@@ -111,6 +112,22 @@ def extract_sdk(encoded, expected_sha, destination):
     return destination/'bloomdb'
 
 
+def validate_version(value):
+    pattern=r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?'
+    match=re.fullmatch(pattern,value)if isinstance(value,str)and len(value)<=128 else None
+    if not match or (match[4]and any(p.isdigit()and len(p)>1 and p.startswith('0')for p in match[4].split('.'))):
+        raise BuildFailure('version_invalid','Version must be exact SemVer without a v prefix')
+    return value
+
+
+def source_version(source, requested):
+    value=tomllib.loads((source/'Cargo.toml').read_text())['workspace']['package']['version']
+    validate_version(value)
+    if requested!=value:
+        raise BuildFailure('version_source_mismatch','Requested version differs from immutable Cargo workspace version')
+    return value
+
+
 def pinned_sdk_sha(source, configured):
     path=source/'docs/release/bloom-sdk-input.json'
     if path.is_symlink() or not path.is_file() or path.stat().st_size>65536:
@@ -124,12 +141,12 @@ def pinned_sdk_sha(source, configured):
     return expected
 
 
-def artifact_receipt(directory, target, revision):
+def artifact_receipt(directory, target, revision, version=None):
     inventory=directory/('inventory-'+target+'.json')
     if inventory.is_symlink() or not inventory.is_file() or inventory.stat().st_size>65536:
         raise BuildFailure('artifact_inventory','Missing or oversized package inventory')
     doc=json.loads(inventory.read_text())
-    if doc.get('target')!=target or doc.get('source_revision')!=revision:
+    if doc.get('target')!=target or doc.get('source_revision')!=revision or (version is not None and doc.get('version')!=version):
         raise BuildFailure('artifact_inventory','Package source/target identity mismatch')
     expected=FORMATS[probe.TARGETS[next(k for k,v in probe.TARGETS.items() if v[2]==target)][0]]
     observed=set()
@@ -161,7 +178,7 @@ def product_cargo_command(rust, target, subcommand):
     if subcommand=='test':
         command+=['-p','headspace-core','-p','headspace-ai','-p','headspace-mcp','-p','headspace-gpui']
     elif subcommand=='build':
-        command+=['--release','-p','headspace-gpui','-p','headspace-mcp']
+        command+=['--release','-p','headspace-gpui','-p','headspace-mcp','--features','headspace-gpui/native-profiler']
     else:
         raise BuildFailure('cargo_contract','Unsupported product build operation')
     return command
@@ -169,14 +186,16 @@ def product_cargo_command(rust, target, subcommand):
 
 def build(args):
     revision=validate_revision(args.revision)
+    version=validate_version(args.version)
     identity=probe.machine_identity()
     probe.validate_native(args.runner,identity['os'],identity['native_arch'],identity['process_arch'],identity['translated'])
     system,arch,target=probe.TARGETS[args.runner]
     output=args.output.resolve();output.mkdir(parents=True,exist_ok=True)
-    result=dict(source=SOURCE_URL,source_revision=revision,target=target,runner=args.runner,status='failed',phase='source_fetch',formats=dict.fromkeys(FORMATS[system],'not_run'))
+    result=dict(source=SOURCE_URL,source_revision=revision,version=version,target=target,runner=args.runner,status='failed',phase='source_fetch',formats=dict.fromkeys(FORMATS[system],'not_run'))
     try:
         with tempfile.TemporaryDirectory(prefix='headspace-private-release-')as temporary:
             source=Path(temporary)/'source';fetch_source(source,revision)
+            source_version(source,version)
             candidate=Path(temporary)/'packages';candidate.mkdir()
             result['phase']='sdk_extract'
             sdk_sha=pinned_sdk_sha(source,os.environ.get('BLOOM_SDK_SHA256',''))
@@ -188,7 +207,7 @@ def build(args):
             # No secret chunks are forwarded to compilers or package tools.
             for key in list(env):
                 if key.startswith('BLOOM_SDK_'):env.pop(key)
-            env.update(CARGO_TERM_COLOR='never',CARGO_INCREMENTAL='0')
+            env.update(CARGO_TERM_COLOR='never',CARGO_INCREMENTAL='0',HEADSPACE_PACKAGE_VERSION=version,HEADSPACE_RELEASE_TAG='v'+version)
             env['CARGO_TARGET_DIR']=str(Path(temporary)/'target')
             env_file=Path(temporary)/'sdk-env.json'
             result['phase']='sdk_build'
@@ -206,7 +225,7 @@ def build(args):
                 result['formats'][fmt]='running'
                 run([sys.executable,str(source/'scripts/package.py'),'--target',target,'--format',fmt,'--output',str(candidate)],'package_'+fmt,cwd=source,env=env,timeout=600)
                 result['formats'][fmt]='created_unsigned_not_runtime_qualified'
-            result['phase']='artifact_audit';receipt=artifact_receipt(candidate,target,revision)
+            result['phase']='artifact_audit';receipt=artifact_receipt(candidate,target,revision,version)
             result['artifact_count']=len(receipt['files'])
             verifier=source/'scripts/verify-release.py'
             if verifier.is_file():
@@ -250,7 +269,7 @@ def build(args):
 def main(argv=None):
     parser=argparse.ArgumentParser(description=__doc__);sub=parser.add_subparsers(dest='command',required=True)
     append=sub.add_parser('append-sdk');append.add_argument('--index',type=int,required=True);append.add_argument('--file',type=Path,required=True)
-    release=sub.add_parser('build');release.add_argument('--runner',choices=probe.TARGETS,required=True);release.add_argument('--revision',required=True);release.add_argument('--sdk-file',type=Path,required=True);release.add_argument('--output',type=Path,required=True)
+    release=sub.add_parser('build');release.add_argument('--runner',choices=probe.TARGETS,required=True);release.add_argument('--revision',required=True);release.add_argument('--version',required=True);release.add_argument('--sdk-file',type=Path,required=True);release.add_argument('--output',type=Path,required=True)
     args=parser.parse_args(argv)
     try:
         if args.command=='append-sdk':append_sdk(args.file,args.index,os.environ.get('HEADSPACE_SDK_CHUNK',''),sdk_count(os.environ.get('BLOOM_SDK_CHUNKS')));return 0

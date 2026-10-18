@@ -6,6 +6,10 @@ on:
         description: Exact public Gitea Headspace commit (40 hex characters)
         required: true
         type: string
+      version:
+        description: Exact source Cargo SemVer (for example 0.1.0-alpha.1)
+        required: true
+        type: string
 permissions:
   contents: read
 jobs:
@@ -21,7 +25,7 @@ jobs:
     env:
       BLOOM_SDK_CHUNKS: ${{ vars.BLOOM_SDK_CHUNKS }}
       BLOOM_SDK_SHA256: ${{ vars.BLOOM_SDK_SHA256 }}
-      HEADSPACE_PACKAGE_VERSION: 0.1.${{ github.run_number }}
+      HEADSPACE_PACKAGE_VERSION: ${{ inputs.version }}
     steps:
       - name: Read trusted public adapter
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -38,7 +42,7 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends build-essential cmake clang lld llvm pkg-config libasound2-dev libfontconfig-dev libglib2.0-dev libssl-dev libva-dev libvulkan-dev libwayland-dev libx11-xcb-dev libxkbcommon-x11-dev libzstd-dev libsqlite3-dev libstdc++-14-dev libsecret-1-dev libcurl4-openssl-dev libsodium-dev dpkg-dev rpm desktop-file-utils
+          sudo apt-get install -y --no-install-recommends build-essential cmake clang lld llvm pkg-config libasound2-dev libfontconfig-dev libglib2.0-dev libssl-dev libva-dev libvulkan-dev libwayland-dev libx11-xcb-dev libxkbcommon-x11-dev libzstd-dev libsqlite3-dev libstdc++-14-dev libsecret-1-dev libcurl4-openssl-dev libsodium-dev dpkg-dev rpm desktop-file-utils weston mesa-vulkan-drivers
       - name: macOS native static OpenSSL prerequisite
         if: runner.os == 'macOS'
         shell: bash
@@ -226,7 +230,7 @@ jobs:
           HEADSPACE_SOURCE_REVISION: ${{ inputs.source_revision }}
           HEADSPACE_BUILD_RUNNER: ${{ matrix.runner }}
         run: |
-          python scripts/headspace_release_build.py build --runner $env:HEADSPACE_BUILD_RUNNER "--revision=$env:HEADSPACE_SOURCE_REVISION" --sdk-file "$env:RUNNER_TEMP/headspace-sdk.b64" --output "$env:RUNNER_TEMP/headspace-dist"
+          python scripts/headspace_release_build.py build --runner $env:HEADSPACE_BUILD_RUNNER "--revision=$env:HEADSPACE_SOURCE_REVISION" "--version=$env:HEADSPACE_PACKAGE_VERSION" --sdk-file "$env:RUNNER_TEMP/headspace-sdk.b64" --output "$env:RUNNER_TEMP/headspace-dist"
           exit $LASTEXITCODE
       - name: Retain only compiled packages and bounded public receipts
         if: always()
