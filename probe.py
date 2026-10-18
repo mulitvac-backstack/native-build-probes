@@ -63,19 +63,30 @@ def validate_rust(label, verbose):
 
 
 def run(command, cwd=None, timeout=90, env=None):
+    executable = Path(command.split(maxsplit=1)[0] if isinstance(command, str) else command[0]).name
     try:
         result = subprocess.run(command, cwd=cwd, env=env, capture_output=True,
-                                text=True, errors="replace", timeout=timeout, check=False)
+                                text=True, errors="replace", timeout=timeout, check=False, shell=False)
     except (OSError, subprocess.TimeoutExpired) as exc:
-        raise ProbeError("Command unavailable or timed out: " + Path(command[0]).name) from exc
+        raise ProbeError("Command unavailable or timed out: " + executable) from exc
     if result.returncode:
         # Only fixed fixture/tool diagnostics; never print environment or whole commands.
         diagnostic = (result.stderr or result.stdout)[-1600:]
         diagnostic = diagnostic.replace(str(Path.home()), "<home>")
         if cwd:
             diagnostic = diagnostic.replace(str(cwd), "<fixture>")
-        raise ProbeError(Path(command[0]).name + " failed: " + diagnostic.strip())
+        raise ProbeError(executable + " failed: " + diagnostic.strip())
     return result.stdout.strip()
+
+
+def optional_sysctl(name):
+    try:
+        return run(["sysctl", "-n", name])
+    except ProbeError as exc:
+        diagnostic = str(exc).lower()
+        if "unknown oid" in diagnostic and name.lower() in diagnostic:
+            return None
+        raise
 
 
 def machine_identity():
@@ -101,11 +112,24 @@ def machine_identity():
         translated = process_machine.value != 0
     elif system == "Darwin":
         # hw.optional.arm64 identifies Apple Silicon even under Rosetta.
-        arm = run(["sysctl", "-n", "hw.optional.arm64"])
-        native = "aarch64" if arm == "1" else "x86_64"
-        result = subprocess.run(["sysctl", "-n", "sysctl.proc_translated"],
-                                capture_output=True, text=True, check=False)
-        translated = result.returncode == 0 and result.stdout.strip() == "1"
+        arm = optional_sysctl("hw.optional.arm64")
+        translation = optional_sysctl("sysctl.proc_translated")
+        if translation not in (None, "0", "1"):
+            raise ProbeError("Unrecognized macOS process translation result")
+        translated = translation == "1"
+        if arm == "1":
+            native = "aarch64"
+        elif arm == "0":
+            native = "x86_64"
+        elif arm is None:
+            # Intel macOS may omit the ARM capability OID. Absence alone is not
+            # architecture evidence: require the native Intel vendor as well.
+            vendor = run(["sysctl", "-n", "machdep.cpu.vendor"])
+            if vendor != "GenuineIntel" or process != "x86_64" or translated:
+                raise ProbeError("Missing ARM OID without verified native Intel CPU/process")
+            native = "x86_64"
+        else:
+            raise ProbeError("Unrecognized macOS ARM hardware capability")
     else:
         native = normalize_arch(os.uname().machine)
     if ctypes.sizeof(ctypes.c_void_p) != 8:
@@ -143,10 +167,12 @@ def windows_compiler_env(arch):
     if not devcmd.is_file():
         raise ProbeError("Visual Studio developer shell missing")
     target = "arm64" if arch == "aarch64" else "x64"
-    command = 'call "' + str(devcmd) + '" -no_logo -arch=' + target + \
-              ' -host_arch=' + target + ' >nul && set'
+    # Pass a raw CreateProcess command line. Python's list2cmdline escapes embedded
+    # quotes for C argv parsing, which is incompatible with cmd.exe batch syntax.
+    command = 'cmd.exe /d /s /c "call "' + str(devcmd) + '" -no_logo -arch=' + target + \
+              ' -host_arch=' + target + ' >nul && set"'
     # Capture internally and retain only compiler configuration; never emit the dump.
-    result = run(["cmd.exe", "/d", "/s", "/c", command])
+    result = run(command)
     compiler_env = os.environ.copy()
     allow = {"path", "include", "lib", "libpath"}
     for line in result.splitlines():

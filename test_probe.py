@@ -92,5 +92,96 @@ class ArchitectureTests(unittest.TestCase):
         self.assertNotIn("DO_NOT_EMIT", output.getvalue())
 
 
+    def test_windows_batch_path_uses_raw_cmd_quotes_and_only_imports_compiler_env(self):
+        from pathlib import Path
+        from subprocess import CompletedProcess
+        calls = []
+        installation = r"C:\Program Files\Microsoft Visual Studio\18\Enterprise"
+        def command(args, **kwargs):
+            calls.append((args, kwargs))
+            if isinstance(args, list):
+                return CompletedProcess(args, 0, installation + "\n", "")
+            return CompletedProcess(args, 0,
+                "Path=native-tools\nINCLUDE=headers\nLIB=libraries\nLIBPATH=metadata\n"
+                "PRIVATE_NEW_VALUE=not-imported\nORIGINAL=not-overwritten\n", "")
+        for arch, target in (("aarch64", "arm64"), ("x86_64", "x64")):
+            calls.clear()
+            with self.subTest(arch=arch), patch.object(Path, "is_file", return_value=True), \
+                 patch.object(probe.subprocess, "run", side_effect=command), \
+                 patch.dict(probe.os.environ, {"ORIGINAL": "preserved"}, clear=True):
+                result = probe.windows_compiler_env(arch)
+            raw, options = calls[1]
+            self.assertIsInstance(raw, str)
+            self.assertTrue(raw.startswith('cmd.exe /d /s /c "call "'))
+            self.assertTrue(raw.endswith(' >nul && set"'))
+            self.assertIn(installation, raw)
+            self.assertIn('VsDevCmd.bat" -no_logo -arch=' + target, raw)
+            self.assertIn(' -host_arch=' + target, raw)
+            self.assertNotIn('\\"', raw)
+            self.assertIs(options["shell"], False)
+            self.assertEqual(result, {"ORIGINAL": "preserved", "PATH": "native-tools",
+                "INCLUDE": "headers", "LIB": "libraries", "LIBPATH": "metadata"})
+
+    def test_raw_cmd_failure_remains_bounded_and_named(self):
+        from subprocess import CompletedProcess
+        with patch.object(probe.subprocess, "run", return_value=CompletedProcess(
+                "cmd.exe", 1, "", "x" * 5000)):
+            with self.assertRaises(probe.ProbeError) as failure:
+                probe.run('cmd.exe /d /s /c "fixed"')
+        self.assertTrue(str(failure.exception).startswith("cmd.exe failed: "))
+        self.assertLess(len(str(failure.exception)), 1700)
+
+
+    def test_intel_mac_missing_arm_oid_requires_positive_vendor(self):
+        def command(args, **_):
+            name = args[-1]
+            if name == "hw.optional.arm64":
+                raise probe.ProbeError("sysctl failed: sysctl: unknown oid 'hw.optional.arm64'")
+            if name == "sysctl.proc_translated":
+                raise probe.ProbeError("sysctl failed: sysctl: unknown oid 'sysctl.proc_translated'")
+            return "GenuineIntel"
+        with patch.object(probe.platform, "system", return_value="Darwin"), \
+             patch.object(probe.platform, "machine", return_value="x86_64"), \
+             patch.object(probe, "run", side_effect=command):
+            identity = probe.machine_identity()
+        probe.validate_native("macos-15-intel", identity["os"], identity["native_arch"],
+                              identity["process_arch"], identity["translated"])
+        self.assertEqual(identity["native_arch"], "x86_64")
+        self.assertFalse(identity["translated"])
+
+    def test_intel_fallback_rejects_unknown_vendor_query_errors_and_rosetta(self):
+        for vendor, translation, arm_error in (
+                ("Unknown", None, "unknown oid 'hw.optional.arm64'"),
+                ("GenuineIntel", "1", "unknown oid 'hw.optional.arm64'"),
+                (probe.ProbeError("vendor query failed"), None, "unknown oid 'hw.optional.arm64'"),
+                ("GenuineIntel", None, "permission denied")):
+            def command(args, **_):
+                if args[-1] == "hw.optional.arm64":
+                    raise probe.ProbeError("sysctl failed: " + arm_error)
+                if args[-1] == "sysctl.proc_translated":
+                    if translation is None:
+                        raise probe.ProbeError("sysctl: unknown oid 'sysctl.proc_translated'")
+                    return translation
+                if isinstance(vendor, Exception):
+                    raise vendor
+                return vendor
+            with self.subTest(vendor=str(vendor), translation=translation, error=arm_error), \
+                 patch.object(probe.platform, "system", return_value="Darwin"), \
+                 patch.object(probe.platform, "machine", return_value="x86_64"), \
+                 patch.object(probe, "run", side_effect=command), self.assertRaises(probe.ProbeError):
+                probe.machine_identity()
+
+    def test_rosetta_on_apple_silicon_cannot_pass_intel_row(self):
+        def command(args, **_):
+            return "1"  # Apple Silicon hardware, translated x86_64 process.
+        with patch.object(probe.platform, "system", return_value="Darwin"), \
+             patch.object(probe.platform, "machine", return_value="x86_64"), \
+             patch.object(probe, "run", side_effect=command):
+            identity = probe.machine_identity()
+        with self.assertRaises(probe.ProbeError):
+            probe.validate_native("macos-15-intel", identity["os"], identity["native_arch"],
+                                  identity["process_arch"], identity["translated"])
+
+
 if __name__ == "__main__":
     unittest.main()

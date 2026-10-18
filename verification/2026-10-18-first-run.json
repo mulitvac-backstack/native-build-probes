@@ -1,0 +1,167 @@
+{
+  "run_id": 39148518623,
+  "url": "https://github.com/mulitvac-backstack/native-build-probes/actions/runs/39148518623",
+  "source_revision": "4445d1925d3e8fe76ff98b971e36d2e8b5d0aa0c",
+  "conclusion": "failure",
+  "scope": "Compiler/Metal capability fixtures only; no application build or rendering qualification",
+  "jobs": [
+    {
+      "job_id": 117737227572,
+      "name": "macos-15-intel",
+      "conclusion": "failure",
+      "result": {
+        "error": "sysctl failed: sysctl: unknown oid 'hw.optional.arm64'",
+        "expected_target": "x86_64-apple-darwin",
+        "runner": "macos-15-intel",
+        "rust_version": "1.98.1",
+        "schema_version": 1,
+        "status": "failed"
+      }
+    },
+    {
+      "job_id": 117737227742,
+      "name": "windows-2025",
+      "conclusion": "failure",
+      "result": {
+        "error": "cmd.exe failed: '\\\"C:\\Program Files\\Microsoft Visual Studio\\18\\Enterprise\\Common7\\Tools\\VsDevCmd.bat\\\"' is not recognized as an internal or external command,\noperable program or batch file.",
+        "expected_target": "x86_64-pc-windows-msvc",
+        "machine": {
+          "native_arch": "x86_64",
+          "os": "Windows",
+          "os_release": "2025Server",
+          "process_arch": "x86_64",
+          "python_version": "3.12.10",
+          "translated": false
+        },
+        "native_validation": "passed",
+        "runner": "windows-2025",
+        "rust_host": "x86_64-pc-windows-msvc",
+        "rust_version": "1.98.1",
+        "schema_version": 1,
+        "status": "failed"
+      }
+    },
+    {
+      "job_id": 117737227802,
+      "name": "windows-11-arm",
+      "conclusion": "failure",
+      "result": {
+        "error": "cmd.exe failed: '\\\"C:\\Program Files\\Microsoft Visual Studio\\18\\Enterprise\\Common7\\Tools\\VsDevCmd.bat\\\"' is not recognized as an internal or external command,\noperable program or batch file.",
+        "expected_target": "aarch64-pc-windows-msvc",
+        "machine": {
+          "native_arch": "aarch64",
+          "os": "Windows",
+          "os_release": "11",
+          "process_arch": "aarch64",
+          "python_version": "3.13.16",
+          "translated": false
+        },
+        "native_validation": "passed",
+        "runner": "windows-11-arm",
+        "rust_host": "aarch64-pc-windows-msvc",
+        "rust_version": "1.98.1",
+        "schema_version": 1,
+        "status": "failed"
+      }
+    },
+    {
+      "job_id": 117737227803,
+      "name": "macos-15",
+      "conclusion": "success",
+      "result": {
+        "expected_target": "aarch64-apple-darwin",
+        "hello": {
+          "c_compiler": "Clang 17.0.0 (clang-1700.0.13.5)",
+          "c_output": "c:aarch64",
+          "c_target_arch": "aarch64",
+          "rust_output": "rust:aarch64",
+          "status": "passed"
+        },
+        "machine": {
+          "native_arch": "aarch64",
+          "os": "Darwin",
+          "os_release": "24.6.0",
+          "process_arch": "aarch64",
+          "python_version": "3.14.7",
+          "translated": false
+        },
+        "metal": {
+          "device": "available",
+          "gpu_execution": "not_tested",
+          "note": "Device discovery only; no GPU command buffer or rendering test executed.",
+          "shader_compile": "passed"
+        },
+        "native_validation": "passed",
+        "runner": "macos-15",
+        "rust_host": "aarch64-apple-darwin",
+        "rust_version": "1.98.1",
+        "schema_version": 1,
+        "status": "passed"
+      }
+    },
+    {
+      "job_id": 117737227885,
+      "name": "ubuntu-24.04-arm",
+      "conclusion": "success",
+      "result": {
+        "expected_target": "aarch64-unknown-linux-gnu",
+        "hello": {
+          "c_compiler": "GCC 13.3.0",
+          "c_output": "c:aarch64",
+          "c_target_arch": "aarch64",
+          "rust_output": "rust:aarch64",
+          "status": "passed"
+        },
+        "machine": {
+          "native_arch": "aarch64",
+          "os": "Linux",
+          "os_release": "6.17.0-1022-azure",
+          "process_arch": "aarch64",
+          "python_version": "3.12.3",
+          "translated": false
+        },
+        "metal": {
+          "status": "not_applicable"
+        },
+        "native_validation": "passed",
+        "runner": "ubuntu-24.04-arm",
+        "rust_host": "aarch64-unknown-linux-gnu",
+        "rust_version": "1.98.1",
+        "schema_version": 1,
+        "status": "passed"
+      }
+    },
+    {
+      "job_id": 117737227888,
+      "name": "ubuntu-24.04",
+      "conclusion": "success",
+      "result": {
+        "expected_target": "x86_64-unknown-linux-gnu",
+        "hello": {
+          "c_compiler": "GCC 13.3.0",
+          "c_output": "c:x86_64",
+          "c_target_arch": "x86_64",
+          "rust_output": "rust:x86_64",
+          "status": "passed"
+        },
+        "machine": {
+          "native_arch": "x86_64",
+          "os": "Linux",
+          "os_release": "6.17.0-1022-azure",
+          "process_arch": "x86_64",
+          "python_version": "3.12.3",
+          "translated": false
+        },
+        "metal": {
+          "status": "not_applicable"
+        },
+        "native_validation": "passed",
+        "runner": "ubuntu-24.04",
+        "rust_host": "x86_64-unknown-linux-gnu",
+        "rust_version": "1.98.1",
+        "schema_version": 1,
+        "status": "passed"
+      }
+    }
+  ]
+}

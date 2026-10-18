@@ -20,6 +20,10 @@ One manual-only workflow with six fixed labels: ubuntu-24.04, ubuntu-24.04-arm, 
 
 Source and tests are under this directory. Local tests plus actual hosted run URLs/results must be recorded before claiming provider feasibility passed. No product code, SDK or private infrastructure inventory belongs in this public experiment.
 
+First hosted [run39148518623](https://github.com/mulitvac-backstack/native-build-probes/actions/runs/39148518623), source4445d1925d3e8fe76ff98b971e36d2e8b5d0aa0c: both Linux architectures and ARM64 macOS passed native Rust/C compile-run; ARM64 macOS also compiled Metal and reported a device available (no GPU execution/rendering claim). Intel macOS failed an optional hardware sysctl missing on Intel. Both Windows rows validated native CPU/Python/Rust hosts but failed batch-file quoting during C environment setup. Exact fixture reports are preserved in [first-run.json](../verification/2026-10-18-first-run.json).
+
+Probe repairs: Intel absence is accepted only with positive GenuineIntel vendor/native x64/non-Rosetta evidence, other query failures remain failures. Windows passes a controlled raw command line directly to CreateProcess, avoiding list2cmdline's backslash escaping of the batch path. Thirteen unit tests pass including these failure cases, secret-free summaries and allowlisted compiler environment handling. Local native ARM64 Rust/C probe passes. Hosted rerun is required before marking the repaired rows passed.
+
 ## Packaging — pending, outside this experiment
 
 All six product target combinations and their install/launch/upgrade/removal checks remain required. Product packages/release publication are separate gated work. This repository itself supplies source scripts/workflows, not native application packages. Private-product runner isolation, budgets, artifact retention, signing credentials and canonical Gitea integration remain separate decisions/evidence.
