@@ -9,6 +9,7 @@ import sys
 import tarfile
 import tempfile
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0,str(Path(__file__).parent/'scripts'))
 SPEC=importlib.util.spec_from_file_location('release',Path(__file__).parent/'scripts/headspace_release_build.py')
@@ -90,6 +91,29 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(report['diagnostics'],[dict(file='crates/headspace-core/src/lib.rs',line=77,code='E0432'),dict(file='sdk/bindings/rust/src/lib.rs',line=77,code='E0432'),dict(code='E0432')])
         self.assertEqual(report['classifications'],['locked_dependency_update_required'])
         self.assertNotIn('PRIVATE',json.dumps(report));self.assertNotIn('symbol',json.dumps(report))
+
+    def test_actual_non_json_failure_categories_are_constant_no_payload(self):
+        for text,category in [('failed to parse manifest PRIVATE','manifest_parse_failed'),('rustc 1.0 is not supported by the following packages PRIVATE','rust_toolchain_incompatible'),('error: linking with PRIVATE failed','linker_invocation_failed'),('linker PRIVATE not found','linker_unavailable'),('Access is denied PRIVATE','filesystem_access_denied'),('No space left on device PRIVATE','filesystem_full'),('test result: FAILED PRIVATE','test_binary_failed')]:
+            report=r.safe_cargo_report(text,set(),set())
+            self.assertIn(category,report['classifications']);self.assertNotIn('PRIVATE',json.dumps(report))
+
+    def test_failed_subprocess_encrypts_raw_log_and_scrubs_key_from_child(self):
+        import base64
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+        identity=dict(source_input_sha256='a'*64,recipe_revision='b'*40,app_source_revision='c'*40,target='aarch64-unknown-linux-gnu',version='0.1.0-alpha.1',sdk_version='0.1.0-alpha.1',run_id=123,worker_sha='d'*40,phase='cargo_test')
+        with tempfile.TemporaryDirectory()as directory:
+            source=Path(directory)/'source';docs=source/'docs/release';docs.mkdir(parents=True);(docs/'bloom-sdk-input.json').write_text(json.dumps(dict(diagnostic_files=[])))
+            output=Path(directory)/'public'
+            key=base64.b64encode(b'k'*32).decode()
+            code='import os;print("key_present="+str("BLOOM_ARTIFACT_KEY" in os.environ));print("PRIVATE source payload");raise SystemExit(1)'
+            with patch.dict(r.os.environ,{'BLOOM_ARTIFACT_KEY':key}),self.assertRaises(r.CargoFailure)as error:
+                r.run_cargo([sys.executable,'-c',code],'cargo_test',source,dict(BLOOM_ARTIFACT_KEY=key,GITHUB_TOKEN='PRIVATE-token'),timeout=5,failure_output=output,failure_identity=identity)
+            receipt=error.exception.encrypted_log;self.assertEqual(receipt['status'],'encrypted')
+            encrypted=(output/receipt['ciphertext']).read_bytes();metadata=(output/receipt['manifest']).read_bytes()
+            raw=AESGCM(b'k'*32).decrypt(encrypted[:12],encrypted[12:],metadata)
+            self.assertIn(b'key_present=False',raw);self.assertIn(b'PRIVATE source payload',raw)
+            self.assertNotIn(b'PRIVATE',encrypted);self.assertNotIn(b'PRIVATE',metadata)
+            self.assertEqual({p.suffix for p in output.iterdir()},{'.aesgcm','.json'})
 
     def test_sdk_chunks_are_bounded_and_counted(self):
         with tempfile.TemporaryDirectory()as directory:

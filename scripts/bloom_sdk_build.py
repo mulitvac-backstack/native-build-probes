@@ -10,7 +10,7 @@ import sys
 import tempfile
 
 from headspace_release_build import (BuildFailure,SdkFailure,probe,fetch_source,validate_revision,
-    validate_version,pinned_sdk_sha,extract_sdk,run_sdk,ALLOWED_ENV)
+    validate_version,pinned_sdk_sha,extract_sdk,run_sdk,ALLOWED_ENV,hosted_failure_identity)
 from sdk_artifacts import collect_sdk,make_envelope,ArtifactError
 
 REPOSITORY='mulitvac-backstack/native-build-probes'
@@ -33,7 +33,7 @@ def build(args):
             for key in list(env):
                 if key.startswith('BLOOM_SDK_')or key in ('BLOOM_ARTIFACT_KEY','GH_TOKEN','GITHUB_TOKEN'):env.pop(key)
             sdk_output=source/'.private/bloom-sdk';env_json=Path(directory)/'env.json';result['phase']='sdk_native_build_and_tests'
-            run_sdk([sys.executable,str(source/'scripts/ci/build_bloom.py'),'--source',str(sdk),'--output',str(sdk_output),'--env-json',str(env_json),'--target',target],source,env)
+            run_sdk([sys.executable,str(source/'scripts/ci/build_bloom.py'),'--source',str(sdk),'--output',str(sdk_output),'--env-json',str(env_json),'--target',target],source,env,failure_output=output,failure_identity=hosted_failure_identity(source,target,version,revision,'sdk_build'))
             link=json.loads(env_json.read_text())
             if set(link)-ALLOWED_ENV:raise BuildFailure('sdk_link_contract','Native SDK link environment is not allowlisted')
             result['phase']='sdk_encrypt'
@@ -60,6 +60,7 @@ def build(args):
     except SdkFailure as exc:
         result['blocker']=dict(code=exc.code,message=str(exc))
         if exc.report is not None:result['sdk_diagnostics']=exc.report
+        if getattr(exc,'encrypted_log',None)is not None:result['encrypted_failure_log']=exc.encrypted_log
     except BuildFailure as exc:result['blocker']=dict(code=exc.code,message=str(exc))
     except (ArtifactError,OSError,ValueError,RuntimeError,probe.ProbeError):result['blocker']=dict(code='sdk_producer_failed',message='Native SDK producer failed during '+result['phase'])
     (output/('bloom-build-'+target+'.json')).write_text(json.dumps(result,indent=2)+'\n')

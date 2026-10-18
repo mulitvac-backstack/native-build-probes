@@ -245,6 +245,8 @@ jobs:
           retention-days: 90
           if-no-files-found: warn
           path: |
+            ${{ runner.temp }}/bloom-sdk-dist/failure-*.aesgcm
+            ${{ runner.temp }}/bloom-sdk-dist/failure-*.manifest.json
             ${{ runner.temp }}/bloom-sdk-dist/bloom-sdk-*.aesgcm
             ${{ runner.temp }}/bloom-sdk-dist/bloom-sdk-*.manifest.json
             ${{ runner.temp }}/bloom-sdk-dist/bloom-build-*.json

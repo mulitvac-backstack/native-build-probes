@@ -23,7 +23,7 @@ import tomllib
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import probe
 from sdk_consumer import consume as consume_sdk
-from sdk_artifacts import ArtifactError
+from sdk_artifacts import ArtifactError,encrypt_failure_log,MAX_FAILURE_LOG
 from headspace_source_build import BuildFailure, SOURCE_URL, FORMATS, fetch_source, run, validate_revision, stop_child, MAX_LOG_BYTES
 
 MAX_ARCHIVE = 512 * 1024
@@ -116,6 +116,33 @@ def extract_sdk(encoded, expected_sha, destination):
     return destination/'bloomdb'
 
 
+def private_compiler_env(env):
+    clean=dict(env)
+    for key in list(clean):
+        if key.startswith('BLOOM_SDK_')or key in ('BLOOM_ARTIFACT_KEY','GH_TOKEN','GITHUB_TOKEN'):clean.pop(key)
+    return clean
+
+
+def hosted_failure_identity(source,target,version,revision,phase,sdk_recipe_revision=None):
+    pin=json.loads((source/'docs/release/bloom-sdk-input.json').read_text())
+    return dict(source_input_sha256=pin['archive_sha256'],recipe_revision=sdk_recipe_revision or revision,app_source_revision=revision,target=target,version=version,sdk_version=pin['sdk_version'],run_id=int(os.environ.get('GITHUB_RUN_ID','0')),worker_sha=os.environ.get('GITHUB_SHA',''),phase=phase)
+
+
+def retain_private_failure(raw,total,output,identity):
+    if output is None or identity is None:return None
+    try:
+        ciphertext,metadata=encrypt_failure_log(raw,identity,total)
+        stem='failure-'+identity['target']+'-'+identity['phase']
+        output=Path(output);output.mkdir(parents=True,exist_ok=True)
+        (output/(stem+'.aesgcm')).write_bytes(ciphertext)
+        (output/(stem+'.manifest.json')).write_bytes(metadata)
+        return dict(status='encrypted',ciphertext=stem+'.aesgcm',manifest=stem+'.manifest.json')
+    except Exception:
+        # A missing key or invalid context cannot cause plaintext fallback or
+        # replace the original build failure with a private exception message.
+        return dict(status='unavailable',reason='encryption_or_identity_validation_failed')
+
+
 class SdkFailure(BuildFailure):
     def __init__(self,code,message,report=None):
         self.report=report
@@ -146,7 +173,7 @@ def safe_sdk_report(output, allowed_files):
     return None
 
 
-def run_sdk(command,source,env,timeout=900):
+def run_sdk(command,source,env,timeout=900,failure_output=None,failure_identity=None):
     allowed={'adapter/platform.c','adapter/platform.h','adapter/sdk_smoke.c'}
     manifest=json.loads((source/'docs/release/bloom-sdk-input.json').read_text())
     diagnostic_files=manifest.get('diagnostic_files',[])
@@ -157,7 +184,7 @@ def run_sdk(command,source,env,timeout=900):
             raise SdkFailure('sdk_diagnostic_contract','Source diagnostic allowlist contains invalid relative path')
         allowed.add(name)
     with tempfile.TemporaryFile()as output:
-        try:child=subprocess.Popen(command,cwd=source,env=env,stdout=output,stderr=output,shell=False,start_new_session=os.name=='posix')
+        try:child=subprocess.Popen(command,cwd=source,env=private_compiler_env(env),stdout=output,stderr=output,shell=False,start_new_session=os.name=='posix')
         except OSError as exc:raise SdkFailure('sdk_build_unavailable','Native SDK driver unavailable')from exc
         deadline=time.monotonic()+timeout
         while child.poll()is None:
@@ -170,7 +197,15 @@ def run_sdk(command,source,env,timeout=900):
             size=os.fstat(output.fileno()).st_size
             output.seek(max(0,size-65536))
             report=safe_sdk_report(output.read(65536).decode('utf-8',errors='replace'),allowed)
-            raise SdkFailure('sdk_build_failed','Native SDK driver failed; raw compiler output remains private',report)
+            log=source/'.private/bloom-sdk/private-build.log'
+            if log.is_file()and not log.is_symlink()and log.resolve().is_relative_to(source.resolve()):
+                total=log.stat().st_size
+                with log.open('rb')as private:private.seek(max(0,total-MAX_FAILURE_LOG));raw=private.read(MAX_FAILURE_LOG)
+            else:
+                total=size;output.seek(max(0,total-MAX_FAILURE_LOG));raw=output.read(MAX_FAILURE_LOG)
+            error=SdkFailure('sdk_build_failed','Native SDK driver failed; raw compiler output remains private',report)
+            error.encrypted_log=retain_private_failure(raw,total,failure_output,failure_identity)
+            raise error
 
 
 class CargoFailure(SdkFailure):
@@ -205,11 +240,23 @@ def safe_cargo_report(output, allowed_public, allowed_sdk):
               'dependency_resolution_failed':['failed to select a version'],
               'native_dependency_build_failed':['failed to run custom build command'],
               'rust_toolchain_incompatible':['requires rustc']}
-    classifications=[name for name,words in patterns.items()if all(word in output for word in words)]
+    lowered=output.lower()
+    classifications=[name for name,words in patterns.items()if all(word in lowered for word in words)]
+    extra={'manifest_parse_failed':[('failed to parse manifest',)],
+           'manifest_load_failed':[('failed to load manifest',)],
+           'dependency_manifest_missing':[('could not find','cargo.toml'),('failed to read','cargo.toml')],
+           'rust_toolchain_incompatible':[('rustc','is not supported by the following packages')],
+           'test_binary_failed':[('test result: failed',),('test failed, to rerun',)],
+           'linker_invocation_failed':[('linking with','failed'),('could not exec the linker',)],
+           'linker_unavailable':[('linker','not found')],
+           'filesystem_access_denied':[('permission denied',),('access is denied',)],
+           'filesystem_full':[('no space left on device',),('not enough space on the disk',)]}
+    for name,alternatives in extra.items():
+        if name not in classifications and any(all(word in lowered for word in words)for words in alternatives):classifications.append(name)
     return dict(diagnostics=diagnostics,classifications=classifications)
 
 
-def run_cargo(command,phase,source,env,timeout=2400):
+def run_cargo(command,phase,source,env,timeout=2400,failure_output=None,failure_identity=None):
     allowed_public=set()
     for path in source.rglob('*.rs'):
         relative=path.relative_to(source)
@@ -217,7 +264,7 @@ def run_cargo(command,phase,source,env,timeout=2400):
     manifest=json.loads((source/'docs/release/bloom-sdk-input.json').read_text())
     allowed_sdk=set(manifest.get('diagnostic_files',[]))
     with tempfile.TemporaryFile()as output:
-        try:child=subprocess.Popen(command,cwd=source,env=env,stdout=output,stderr=output,shell=False,start_new_session=os.name=='posix')
+        try:child=subprocess.Popen(command,cwd=source,env=private_compiler_env(env),stdout=output,stderr=output,shell=False,start_new_session=os.name=='posix')
         except OSError as exc:raise CargoFailure(phase+'_unavailable','Native Cargo executable unavailable')from exc
         deadline=time.monotonic()+timeout
         while child.poll()is None:
@@ -231,7 +278,11 @@ def run_cargo(command,phase,source,env,timeout=2400):
         if child.returncode:
             output.seek(max(0,size-1024*1024))
             report=safe_cargo_report(output.read(1024*1024).decode('utf-8',errors='replace'),allowed_public,allowed_sdk)
-            raise CargoFailure(phase+'_failed','Native Cargo failed; raw output remains private',report)
+            report['exit_code']=child.returncode
+            output.seek(max(0,size-MAX_FAILURE_LOG));raw=output.read(MAX_FAILURE_LOG)
+            error=CargoFailure(phase+'_failed','Native Cargo failed; raw output remains private',report)
+            error.encrypted_log=retain_private_failure(raw,size,failure_output,failure_identity)
+            raise error
 
 
 def validate_version(value):
@@ -336,7 +387,7 @@ def build(args):
             for phase,sub in [('cargo_test','test'),('cargo_build','build')]:
                 result['phase']=phase
                 command=product_cargo_command(rust,target,sub)
-                run_cargo(command,phase,source,env,timeout=2400);result[phase]='passed'
+                run_cargo(command,phase,source,env,timeout=2400,failure_output=output,failure_identity=hosted_failure_identity(source,target,version,revision,phase,sdk_receipt['producer']['recipe_revision']));result[phase]='passed'
             result['phase']='package'
             for fmt in FORMATS[system]:
                 result['formats'][fmt]='running'
@@ -373,6 +424,7 @@ def build(args):
             result.update(status='passed',phase='completed')
     except BuildFailure as exc:
         if isinstance(exc,SdkFailure)and exc.report is not None:result['cargo_diagnostics'if isinstance(exc,CargoFailure)else'sdk_diagnostics']=exc.report
+        if getattr(exc,'encrypted_log',None)is not None:result['encrypted_failure_log']=exc.encrypted_log
         result['blocker']=dict(code=exc.code,message=str(exc))
     except (ArtifactError,OSError,ValueError,RuntimeError,probe.ProbeError):
         result['blocker']=dict(code='release_adapter_failed',message='Native release lane failed during '+result['phase'])

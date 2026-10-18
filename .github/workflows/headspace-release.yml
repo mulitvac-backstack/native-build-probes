@@ -77,6 +77,8 @@ jobs:
           retention-days: 3
           if-no-files-found: warn
           path: |
+            ${{ runner.temp }}/headspace-dist/failure-*.aesgcm
+            ${{ runner.temp }}/headspace-dist/failure-*.manifest.json
             ${{ runner.temp }}/headspace-dist/headspace-*.deb
             ${{ runner.temp }}/headspace-dist/headspace-*.rpm
             ${{ runner.temp }}/headspace-dist/headspace-*.app.zip

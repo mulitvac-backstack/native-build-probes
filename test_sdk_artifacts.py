@@ -45,8 +45,9 @@ class SDKArtifactsTests(unittest.TestCase):
                 self.assertEqual(manifest['tests'],dict(native_build='passed',required_sdk_semantics='passed'))
                 for name,data in files.items():self.assertEqual((root/name).read_bytes(),data)
                 self.assertFalse((root/'src').exists())
-                env=sdk.sdk_link_env(root,target);self.assertEqual(env['BLOOM_LIB_DIR'],str(root/'lib'))
+                env=sdk.sdk_link_env(root,target);self.assertEqual(Path(env['BLOOM_LIB_DIR']).resolve(),(root/'lib').resolve())
                 self.assertNotIn('/producer/',json.dumps(env))
+                self.assertTrue(env['BLOOM_EXTRA_LIB_DIRS']);self.assertTrue(all(env['BLOOM_EXTRA_LIB_DIRS'].split(os.pathsep)))
                 self.assertEqual(env['BLOOM_STATIC_LIBS'],'bcrypt'if'windows'in target else'static=crypto,m,pthread'if'apple'in target else'crypto,m,pthread')
 
     def test_ciphertext_metadata_key_and_test_identity_tamper_fail_closed(self):
@@ -77,6 +78,18 @@ class SDKArtifactsTests(unittest.TestCase):
                 item=tarfile.TarInfo(name);item.type=kind;item.linkname='/outside';archive.addfile(item)
             nonce=b'n'*12;encrypted=nonce+AESGCM(sdk.secret_key()).encrypt(nonce,gzip.compress(stream.getvalue()),metadata)
             with tempfile.TemporaryDirectory()as directory,self.assertRaises(sdk.ArtifactError):sdk.unpack_envelope(encrypted,metadata,Path(directory)/'sdk','aarch64-unknown-linux-gnu',VERSION,SOURCE)
+
+    def test_failure_log_envelope_authenticates_context_without_plaintext_leak(self):
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+        identity=dict(source_input_sha256=SOURCE,recipe_revision='c'*40,app_source_revision='e'*40,target='aarch64-unknown-linux-gnu',version=VERSION,sdk_version=VERSION,run_id=123,worker_sha='b'*40,phase='cargo_test')
+        raw=b'PRIVATE compiler source and absolute host paths'
+        encrypted,metadata=sdk.encrypt_failure_log(raw,identity)
+        self.assertNotIn(raw,encrypted);self.assertNotIn(b'PRIVATE',metadata)
+        self.assertEqual(AESGCM(sdk.secret_key()).decrypt(encrypted[:12],encrypted[12:],metadata),raw)
+        with self.assertRaises(Exception):AESGCM(sdk.secret_key()).decrypt(encrypted[:12],encrypted[12:],metadata+b' ')
+        with self.assertRaises(sdk.ArtifactError):sdk.encrypt_failure_log(raw,dict(identity,worker_sha='invalid'))
+        data=b'x'*(sdk.MAX_FAILURE_LOG+8);encrypted,metadata=sdk.encrypt_failure_log(data,identity)
+        self.assertTrue(json.loads(metadata)['truncated']);self.assertEqual(len(AESGCM(sdk.secret_key()).decrypt(encrypted[:12],encrypted[12:],metadata)),sdk.MAX_FAILURE_LOG)
 
     def test_consumer_requires_private_revision_and_rejects_symlink_ancestor(self):
         with tempfile.TemporaryDirectory()as directory:

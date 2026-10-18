@@ -144,4 +144,27 @@ def collect_sdk(source,sdk_source,sdk_output,env):
 def sdk_link_env(directory,target):
     directory=Path(directory).resolve()
     libraries='bcrypt'if 'windows'in target else 'static=crypto,m,pthread'if 'apple'in target else 'crypto,m,pthread'
-    return dict(BLOOM_LIB_DIR=str(directory/'lib'),BLOOM_STATIC='1',BLOOM_STATIC_LIBS=libraries,BLOOM_EXTRA_LIB_DIRS=str(directory/'lib')if 'apple'in target else '')
+    return dict(BLOOM_LIB_DIR=str(directory/'lib'),BLOOM_STATIC='1',BLOOM_STATIC_LIBS=libraries,BLOOM_EXTRA_LIB_DIRS=str(directory/'lib'))
+
+
+MAX_FAILURE_LOG=16*1024*1024
+
+
+def encrypt_failure_log(raw,identity,total_bytes=None):
+    """Encrypt bounded diagnostics; this format is distinct from an SDK payload."""
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    required={'source_input_sha256','recipe_revision','app_source_revision','target','version','sdk_version','run_id','worker_sha','phase'}
+    if set(identity)!=required:raise ArtifactError('Encrypted diagnostic identity fields invalid')
+    for field,length in [('source_input_sha256',64),('recipe_revision',40),('app_source_revision',40),('worker_sha',40)]:
+        if not isinstance(identity[field],str)or re.fullmatch('[0-9a-f]{'+str(length)+'}',identity[field])is None:raise ArtifactError('Encrypted diagnostic revision identity invalid')
+    if identity['phase']not in ('sdk_build','cargo_test','cargo_build')or type(identity['run_id'])is not int or identity['run_id']<=0:
+        raise ArtifactError('Encrypted diagnostic run/phase invalid')
+    if identity['target']not in {'x86_64-unknown-linux-gnu','aarch64-unknown-linux-gnu','x86_64-apple-darwin','aarch64-apple-darwin','x86_64-pc-windows-msvc','aarch64-pc-windows-msvc'}:raise ArtifactError('Encrypted diagnostic target invalid')
+    for field in ['version','sdk_version']:
+        if not isinstance(identity[field],str)or re.fullmatch('[0-9A-Za-z.+-]{1,128}',identity[field])is None:raise ArtifactError('Encrypted diagnostic version invalid')
+    total=len(raw)if total_bytes is None else total_bytes
+    if type(total)is not int or total<len(raw):raise ArtifactError('Encrypted diagnostic size identity invalid')
+    payload=raw[-MAX_FAILURE_LOG:]
+    metadata=canonical(dict(identity,schema_version=1,purpose='private_build_diagnostics',bytes=len(payload),total_bytes=total,truncated=total>len(payload)))
+    nonce=os.urandom(12)
+    return nonce+AESGCM(secret_key()).encrypt(nonce,payload,metadata),metadata
