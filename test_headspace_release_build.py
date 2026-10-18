@@ -69,6 +69,28 @@ class ReleaseTests(unittest.TestCase):
         self.assertIsNone(r.safe_sdk_report('raw compiler source',set()))
         self.assertIsNone(r.safe_sdk_report(json.dumps({'phase':'arbitrary private payload','exit_code':1,'diagnostics':[]}),set()))
 
+    def test_actual_driver_failure_preserves_only_pinned_safe_json(self):
+        with tempfile.TemporaryDirectory()as directory:
+            source=Path(directory);manifest=source/'docs/release/bloom-sdk-input.json';manifest.parent.mkdir(parents=True)
+            manifest.write_text(json.dumps({'diagnostic_files':['src/bloom.c']}))
+            report=dict(phase='compile',exit_code=2,diagnostics=[dict(file='src/bloom.c',line=17,code='C2065',message='PRIVATE source')])
+            code='import sys;print('+repr(json.dumps(report))+');print("PRIVATE compiler source",file=sys.stderr);raise SystemExit(2)'
+            with self.assertRaises(r.SdkFailure)as error:r.run_sdk([sys.executable,'-c',code],source,{},timeout=5)
+            self.assertEqual(error.exception.report,dict(phase='compile',exit_code=2,diagnostics=[dict(file='src/bloom.c',line=17,code='C2065')]))
+            self.assertNotIn('PRIVATE',str(error.exception))
+            manifest.write_text(json.dumps({'diagnostic_files':['../escape.c']}))
+            with self.assertRaises(r.SdkFailure)as error:r.run_sdk([sys.executable,'-c','raise SystemExit(0)'],source,{},timeout=5)
+            self.assertEqual(error.exception.code,'sdk_diagnostic_contract')
+
+    def test_cargo_diagnostics_strip_rendered_messages_private_paths_and_symbols(self):
+        def item(file):return dict(reason='compiler-message',message=dict(level='error',code={'code':'E0432'},message='PRIVATE source symbol',rendered='PRIVATE source snippet',spans=[dict(file_name=file,line_start=77,is_primary=True)]))
+        output='\n'.join(json.dumps(item(file))for file in ['crates/headspace-core/src/lib.rs','.private/bloomdb/bindings/rust/src/lib.rs','/home/PRIVATE/other.rs'])
+        output+='\nerror: the lock file PRIVATE needs to be updated but --locked was passed'
+        report=r.safe_cargo_report(output,{'crates/headspace-core/src/lib.rs'},{'bindings/rust/src/lib.rs'})
+        self.assertEqual(report['diagnostics'],[dict(file='crates/headspace-core/src/lib.rs',line=77,code='E0432'),dict(file='sdk/bindings/rust/src/lib.rs',line=77,code='E0432'),dict(code='E0432')])
+        self.assertEqual(report['classifications'],['locked_dependency_update_required'])
+        self.assertNotIn('PRIVATE',json.dumps(report));self.assertNotIn('symbol',json.dumps(report))
+
     def test_sdk_chunks_are_bounded_and_counted(self):
         with tempfile.TemporaryDirectory()as directory:
             path=Path(directory)/'sdk'

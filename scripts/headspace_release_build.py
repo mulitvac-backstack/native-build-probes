@@ -147,7 +147,13 @@ def safe_sdk_report(output, allowed_files):
 def run_sdk(command,source,env,timeout=900):
     allowed={'adapter/platform.c','adapter/platform.h','adapter/sdk_smoke.c'}
     manifest=json.loads((source/'docs/release/bloom-sdk-input.json').read_text())
-    allowed.update(entry['path']for entry in manifest.get('snapshot_files',[])if isinstance(entry,dict)and isinstance(entry.get('path'),str))
+    diagnostic_files=manifest.get('diagnostic_files',[])
+    if not isinstance(diagnostic_files,list)or len(diagnostic_files)>100:
+        raise SdkFailure('sdk_diagnostic_contract','Source diagnostic allowlist exceeds bounds')
+    for name in diagnostic_files:
+        if not isinstance(name,str)or len(name)>200 or PurePosixPath(name).is_absolute()or '\\'in name or ':'in name or any(part in ('.','..')for part in name.split('/')):
+            raise SdkFailure('sdk_diagnostic_contract','Source diagnostic allowlist contains invalid relative path')
+        allowed.add(name)
     with tempfile.TemporaryFile()as output:
         try:child=subprocess.Popen(command,cwd=source,env=env,stdout=output,stderr=output,shell=False,start_new_session=os.name=='posix')
         except OSError as exc:raise SdkFailure('sdk_build_unavailable','Native SDK driver unavailable')from exc
@@ -163,6 +169,67 @@ def run_sdk(command,source,env,timeout=900):
             output.seek(max(0,size-65536))
             report=safe_sdk_report(output.read(65536).decode('utf-8',errors='replace'),allowed)
             raise SdkFailure('sdk_build_failed','Native SDK driver failed; raw compiler output remains private',report)
+
+
+class CargoFailure(SdkFailure):
+    pass
+
+
+def safe_cargo_report(output, allowed_public, allowed_sdk):
+    diagnostics=[]
+    for line in output.splitlines():
+        if len(line)>65536:continue
+        try:document=json.loads(line)
+        except ValueError:continue
+        if not isinstance(document,dict)or document.get('reason')!='compiler-message':continue
+        message=document.get('message',{})
+        if not isinstance(message,dict)or message.get('level')not in ('error','failure-note'):continue
+        code=message.get('code');code=code.get('code')if isinstance(code,dict)else None
+        for span in message.get('spans',[])[:8]:
+            if not isinstance(span,dict)or not span.get('is_primary'):continue
+            filename=span.get('file_name');location=span.get('line_start');item={}
+            if isinstance(filename,str):
+                name=filename.replace('\\','/')
+                if name in allowed_public and len(name)<=200:item['file']=name
+                elif name.startswith('.private/bloomdb/')and name[len('.private/bloomdb/'):]in allowed_sdk:item['file']='sdk/'+name[len('.private/bloomdb/'):]
+            if item and type(location)is int and 1<=location<=10000000:item['line']=location
+            if isinstance(code,str)and re.fullmatch('E[0-9]{4}',code):item['code']=code
+            if item and item not in diagnostics:diagnostics.append(item)
+            if len(diagnostics)>=20:break
+        if len(diagnostics)>=20:break
+    patterns={'locked_dependency_update_required':['lock file','--locked'],
+              'dependency_fetch_failed':['failed to get'],
+              'dependency_fetch_or_revision_failed':['failed to fetch'],
+              'dependency_resolution_failed':['failed to select a version'],
+              'native_dependency_build_failed':['failed to run custom build command'],
+              'rust_toolchain_incompatible':['requires rustc']}
+    classifications=[name for name,words in patterns.items()if all(word in output for word in words)]
+    return dict(diagnostics=diagnostics,classifications=classifications)
+
+
+def run_cargo(command,phase,source,env,timeout=2400):
+    allowed_public=set()
+    for path in source.rglob('*.rs'):
+        relative=path.relative_to(source)
+        if relative.parts[0]not in ('.private','target','.git')and not path.is_symlink():allowed_public.add(relative.as_posix())
+    manifest=json.loads((source/'docs/release/bloom-sdk-input.json').read_text())
+    allowed_sdk=set(manifest.get('diagnostic_files',[]))
+    with tempfile.TemporaryFile()as output:
+        try:child=subprocess.Popen(command,cwd=source,env=env,stdout=output,stderr=output,shell=False,start_new_session=os.name=='posix')
+        except OSError as exc:raise CargoFailure(phase+'_unavailable','Native Cargo executable unavailable')from exc
+        deadline=time.monotonic()+timeout
+        while child.poll()is None:
+            if time.monotonic()>=deadline:
+                stop_child(child);raise CargoFailure(phase+'_timeout','Native Cargo exceeded time limit')
+            if os.fstat(output.fileno()).st_size>MAX_LOG_BYTES:
+                stop_child(child);raise CargoFailure(phase+'_output_limit','Native Cargo exceeded private log bound')
+            time.sleep(0.1)
+        size=os.fstat(output.fileno()).st_size
+        if size>MAX_LOG_BYTES:raise CargoFailure(phase+'_output_limit','Native Cargo exceeded private log bound')
+        if child.returncode:
+            output.seek(max(0,size-1024*1024))
+            report=safe_cargo_report(output.read(1024*1024).decode('utf-8',errors='replace'),allowed_public,allowed_sdk)
+            raise CargoFailure(phase+'_failed','Native Cargo failed; raw output remains private',report)
 
 
 def validate_version(value):
@@ -227,7 +294,7 @@ def artifact_receipt(directory, target, revision, version=None):
 
 
 def product_cargo_command(rust, target, subcommand):
-    command=rust[:-1]+['cargo',subcommand,'--locked','--target',target]
+    command=rust[:-1]+['cargo',subcommand,'--locked','--target',target,'--message-format=json']
     if subcommand=='test':
         command+=['-p','headspace-core','-p','headspace-ai','-p','headspace-mcp','-p','headspace-gpui']
     elif subcommand=='build':
@@ -272,7 +339,7 @@ def build(args):
             for phase,sub in [('cargo_test','test'),('cargo_build','build')]:
                 result['phase']=phase
                 command=product_cargo_command(rust,target,sub)
-                run(command,phase,cwd=source,env=env,timeout=2400);result[phase]='passed'
+                run_cargo(command,phase,source,env,timeout=2400);result[phase]='passed'
             result['phase']='package'
             for fmt in FORMATS[system]:
                 result['formats'][fmt]='running'
@@ -308,7 +375,7 @@ def build(args):
             (output/('inventory-'+target+'.json')).write_text(json.dumps(receipt,indent=2)+'\n')
             result.update(status='passed',phase='completed')
     except BuildFailure as exc:
-        if isinstance(exc,SdkFailure)and exc.report is not None:result['sdk_diagnostics']=exc.report
+        if isinstance(exc,SdkFailure)and exc.report is not None:result['cargo_diagnostics'if isinstance(exc,CargoFailure)else'sdk_diagnostics']=exc.report
         result['blocker']=dict(code=exc.code,message=str(exc))
     except (OSError,ValueError,RuntimeError,probe.ProbeError):
         result['blocker']=dict(code='release_adapter_failed',message='Native release lane failed during '+result['phase'])
