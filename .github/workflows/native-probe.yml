@@ -1,0 +1,47 @@
+name: Native compiler feasibility probe
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native:
+    if: github.event.repository.private == false
+    name: ${{ matrix.runner }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        runner:
+          - ubuntu-24.04
+          - ubuntu-24.04-arm
+          - windows-2025
+          - windows-11-arm
+          - macos-15-intel
+          - macos-15
+    steps:
+      - name: Read public probe source
+        # Official actions/checkout v7.0.1; tag resolved via GitHub API 2026-10-18.
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Probe Linux and macOS
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          PROBE_RUNNER: ${{ matrix.runner }}
+        run: |
+          python3 -m unittest -v test_probe.py
+          python3 probe.py --runner "$PROBE_RUNNER" --install-rust
+      - name: Probe Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          PROBE_RUNNER: ${{ matrix.runner }}
+        run: |
+          python -m unittest -v test_probe.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python probe.py --runner $env:PROBE_RUNNER --install-rust
+          exit $LASTEXITCODE
