@@ -59,6 +59,8 @@ class ReleaseTests(unittest.TestCase):
     def test_product_checks_exclude_legacy_reference_and_build_actual_release_frontend(self):
         rust=['rustup','run','1.98.1','rustc'];target='aarch64-pc-windows-msvc'
         tests=r.product_cargo_command(rust,target,'test');build=r.product_cargo_command(rust,target,'build')
+        self.assertIn('--no-fail-fast',tests)
+        self.assertNotIn('--no-fail-fast',build)
         self.assertNotIn('--workspace',tests)
         self.assertNotIn('headspace-app',tests)
         self.assertEqual([tests[i+1]for i,v in enumerate(tests)if v=='-p'],['headspace-core','headspace-ai','headspace-mcp','headspace-gpui'])

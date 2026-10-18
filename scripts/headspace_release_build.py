@@ -357,7 +357,7 @@ def phase_progress(target, phase, status):
 def product_cargo_command(rust, target, subcommand):
     command=rust[:-1]+['cargo',subcommand,'--locked','--target',target,'--message-format=json']
     if subcommand=='test':
-        command+=['-p','headspace-core','-p','headspace-ai','-p','headspace-mcp','-p','headspace-gpui']
+        command+=['--no-fail-fast','-p','headspace-core','-p','headspace-ai','-p','headspace-mcp','-p','headspace-gpui']
     elif subcommand=='build':
         command+=['--release','-p','headspace-gpui','-p','headspace-mcp','--features','headspace-gpui/native-profiler']
     else:
