@@ -45,13 +45,18 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends build-essential cmake clang lld llvm pkg-config libasound2-dev libfontconfig-dev libglib2.0-dev libssl-dev libva-dev libvulkan-dev libwayland-dev libx11-xcb-dev libxkbcommon-x11-dev libzstd-dev libsqlite3-dev libstdc++-14-dev libsecret-1-dev libcurl4-openssl-dev libsodium-dev dpkg-dev rpm desktop-file-utils weston mesa-vulkan-drivers
-      - name: macOS native static OpenSSL prerequisite
+          sudo apt-get install -y --no-install-recommends build-essential cmake clang lld llvm pkg-config libasound2-dev libfontconfig-dev libglib2.0-dev libssl-dev libva-dev libvulkan-dev libwayland-dev libx11-xcb-dev libxkbcommon-x11-dev libzstd-dev libsqlite3-dev libstdc++-14-dev libsecret-1-dev libcurl4-openssl-dev libsodium-dev dpkg-dev rpm desktop-file-utils weston mesa-vulkan-drivers ffmpeg
+          ffmpeg -version >/dev/null
+          ffprobe -version >/dev/null
+      - name: macOS native build and media-test prerequisites
         if: runner.os == 'macOS'
         shell: bash
         run: |
           brew list --versions openssl@3 >/dev/null || brew install openssl@3
           test -f "$(brew --prefix openssl@3)/lib/libcrypto.a"
+          brew list --versions ffmpeg >/dev/null || brew install ffmpeg
+          ffmpeg -version >/dev/null
+          ffprobe -version >/dev/null
       - name: Windows pinned WiX installer compiler
         if: runner.os == 'Windows'
         shell: pwsh
