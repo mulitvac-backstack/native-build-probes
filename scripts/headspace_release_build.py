@@ -24,7 +24,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import probe
 from sdk_consumer import consume as consume_sdk
 from sdk_artifacts import ArtifactError,encrypt_failure_log,MAX_FAILURE_LOG
-from headspace_source_build import BuildFailure, SOURCE_URL, FORMATS, fetch_source, run, validate_revision, stop_child, MAX_LOG_BYTES
+from headspace_source_build import BuildFailure, SOURCE_URL, fetch_source, run, validate_revision, stop_child, MAX_LOG_BYTES
+
+FORMATS = {'Linux': ('binary',), 'Darwin': ('binary',), 'Windows': ('binary',)}
 
 MAX_ARCHIVE = 512 * 1024
 MAX_EXTRACTED = 128 * 1024 * 1024
@@ -349,13 +351,13 @@ def artifact_receipt(directory, target, revision, version=None):
     expected=FORMATS[probe.TARGETS[next(k for k,v in probe.TARGETS.items() if v[2]==target)][0]]
     observed=set()
     files=doc.get('files',[])
-    if not files or len(files)>12:
+    if len(files)!=1 or doc.get('schema_version')!=2 or doc.get('delivery')!='single_native_executable':
         raise BuildFailure('artifact_inventory','Invalid artifact count')
     for entry in files:
         name=entry.get('path','');fmt=entry.get('format')
         path=directory/name
         expected_stem='headspace-'+doc.get('version','')+'-'+target
-        allowed_names={expected_stem+extension for extension in ['.deb','.rpm','.app.zip','.dmg','.pkg','.rb','.msi','.winget.zip']}
+        allowed_names={expected_stem+('.exe' if 'windows' in target else '')}
         if (name not in allowed_names or '/' in name or '\\' in name
             or fmt not in expected or not path.is_file() or path.is_symlink()
             or path.stat().st_size>1024*1024*1024):
@@ -363,7 +365,7 @@ def artifact_receipt(directory, target, revision, version=None):
         digest=hashlib.sha256()
         with path.open('rb')as handle:
             for block in iter(lambda:handle.read(1024*1024),b''):digest.update(block)
-        if digest.hexdigest()!=entry.get('sha256'):
+        if path.stat().st_size!=entry.get('bytes') or digest.hexdigest()!=entry.get('sha256'):
             raise BuildFailure('artifact_inventory','Artifact checksum mismatch')
         observed.add(fmt)
     if observed!=set(expected):
@@ -384,7 +386,7 @@ def product_cargo_command(rust, target, subcommand):
     if subcommand=='test':
         command+=['--no-fail-fast','-p','headspace-core','-p','headspace-ai','-p','headspace-mcp','-p','headspace-gpui']
     elif subcommand=='build':
-        command+=['--release','-p','headspace-gpui','-p','headspace-mcp','--features','headspace-gpui/native-profiler']
+        command+=['--release','-p','headspace-gpui','--features','headspace-gpui/native-profiler']
     else:
         raise BuildFailure('cargo_contract','Unsupported product build operation')
     return command
@@ -435,27 +437,26 @@ def build(args):
             result['phase']='artifact_audit';receipt=artifact_receipt(candidate,target,revision,version)
             result['artifact_count']=len(receipt['files'])
             verifier=source/'scripts/verify-release.py'
-            if verifier.is_file():
-                for entry in receipt['files']:
-                    if entry['format']not in ('deb','rpm','dmg','pkg','msi'):continue
-                    report=output/('verify-'+target+'-'+entry['format']+'.json')
-                    base=[sys.executable,str(verifier),'--runner',args.runner,'--target',target,'--format',entry['format'],'--artifact',str(candidate/entry['path']),'--inventory',str(candidate/('inventory-'+target+'.json')),'--source-revision',revision]
-                    run(base+['--report',str(report),'--mode','audit'],'verify_'+entry['format'],cwd=source,env=env,timeout=600)
-                    install_report=output/('verify-install-'+target+'-'+entry['format']+'.json')
-                    qualification=result.setdefault('native_qualification',{})
-                    try:
-                        run(base+['--report',str(install_report),'--mode','install'],'install_'+entry['format'],cwd=source,env=env,timeout=900)
-                        qualification[entry['format']]='passed'
-                    except BuildFailure as exc:
-                        # Compiled unsigned development packages survive a real
-                        # runtime/installer block; final release does not pass.
-                        qualification[entry['format']]=dict(status='blocked_or_failed',code=exc.code,report=install_report.name)
-                    for public_report in [report,install_report]:
-                        if public_report.is_symlink() or (public_report.exists() and public_report.stat().st_size>65536):
-                            public_report.unlink(missing_ok=True)
-                            raise BuildFailure('verification_report','Native report exceeds public receipt bounds')
-            else:
-                result['native_qualification']=dict(status='blocked',reason='Source revision has no native verifier')
+            if not verifier.is_file():
+                raise BuildFailure('verification_missing','Single executable requires native CLI/MCP verification')
+            entry=receipt['files'][0]
+            base=[sys.executable,str(verifier),'--runner',args.runner,'--target',target,'--format','binary',
+                  '--artifact',str(candidate/entry['path']),'--inventory',str(candidate/('inventory-'+target+'.json')),
+                  '--source-revision',revision]
+            reports={}
+            for mode,prefix in [('audit','verify-'),('native','verify-native-')]:
+                report=output/(prefix+target+'-binary.json')
+                run(base+['--report',str(report),'--mode',mode],'verify_'+mode,cwd=source,env=env,timeout=180)
+                if report.is_symlink() or not report.is_file() or report.stat().st_size>65536:
+                    raise BuildFailure('verification_report','Bounded native executable receipt required')
+                proof=json.loads(report.read_text())
+                if proof.get('source_revision')!=revision or proof.get('target')!=target or proof.get('audit',{}).get('sha256')!=entry['sha256']:
+                    raise BuildFailure('verification_identity','Native verification differs from executable')
+                expected_status={'passed_artifact_audit'} if mode=='audit' else {'passed_bounded_native_checks','passed_cli_checks_gui_unqualified'}
+                if proof.get('status')not in expected_status or proof.get('cli',{}).get('status')!='passed':
+                    raise BuildFailure('verification_failed','Native CLI/MCP checks must pass')
+                reports[mode]=proof.get('status')
+            result['native_qualification']=reports
             phase_progress(target,'audit','passed')
             # Only validated compiled artifacts cross into the upload directory.
             for entry in receipt['files']:

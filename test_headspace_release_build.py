@@ -87,7 +87,7 @@ class ReleaseTests(unittest.TestCase):
         self.assertNotIn('--workspace',tests)
         self.assertNotIn('headspace-app',tests)
         self.assertEqual([tests[i+1]for i,v in enumerate(tests)if v=='-p'],['headspace-core','headspace-ai','headspace-mcp','headspace-gpui'])
-        self.assertEqual([build[i+1]for i,v in enumerate(build)if v=='-p'],['headspace-gpui','headspace-mcp'])
+        self.assertEqual([build[i+1]for i,v in enumerate(build)if v=='-p'],['headspace-gpui'])
         self.assertIn('--release',build)
         self.assertIn('--locked',tests)
 
@@ -183,17 +183,27 @@ class ReleaseTests(unittest.TestCase):
                 root=Path(directory);payload=self.archive(entries);encoded=root/'sdk';encoded.write_bytes(base64.b64encode(payload))
                 with self.assertRaises(r.BuildFailure):r.extract_sdk(encoded,hashlib.sha256(payload).hexdigest(),root/'out')
 
-    def test_artifact_inventory_requires_every_real_format_and_matching_hash(self):
-        with tempfile.TemporaryDirectory()as directory:
-            root=Path(directory);target='aarch64-unknown-linux-gnu';revision='a'*40;files=[]
-            for fmt in ['deb','rpm']:
-                path=root/('headspace-0.1.0-'+target+'.'+fmt);path.write_bytes(fmt.encode());files.append(dict(path=path.name,format=fmt,sha256=hashlib.sha256(fmt.encode()).hexdigest()))
-            doc=dict(target=target,source_revision=revision,version='0.1.0',files=files)
-            inventory=root/('inventory-'+target+'.json');inventory.write_text(json.dumps(doc));r.artifact_receipt(root,target,revision)
-            (root/files[0]['path']).write_bytes(b'changed')
-            with self.assertRaises(r.BuildFailure):r.artifact_receipt(root,target,revision)
-            doc['files']=files[1:];inventory.write_text(json.dumps(doc))
-            with self.assertRaises(r.BuildFailure):r.artifact_receipt(root,target,revision)
+    def test_artifact_inventory_requires_one_native_executable_not_installer_collection(self):
+        for target in ['aarch64-unknown-linux-gnu','x86_64-apple-darwin','aarch64-pc-windows-msvc']:
+            with self.subTest(target=target),tempfile.TemporaryDirectory()as directory:
+                root=Path(directory);revision='a'*40;name='headspace-0.1.0-'+target+('.exe'if'windows'in target else'')
+                path=root/name;path.write_bytes(b'controlled-native-fixture')
+                entry=dict(path=name,format='binary',bytes=path.stat().st_size,sha256=hashlib.sha256(path.read_bytes()).hexdigest())
+                doc=dict(schema_version=2,delivery='single_native_executable',target=target,source_revision=revision,version='0.1.0',files=[entry])
+                inventory=root/('inventory-'+target+'.json');inventory.write_text(json.dumps(doc));r.artifact_receipt(root,target,revision)
+                path.write_bytes(b'changed')
+                with self.assertRaises(r.BuildFailure):r.artifact_receipt(root,target,revision)
+                path.write_bytes(b'controlled-native-fixture');doc['files']=[entry,dict(entry)];inventory.write_text(json.dumps(doc))
+                with self.assertRaises(r.BuildFailure):r.artifact_receipt(root,target,revision)
+                doc['files']=[dict(entry,path=name+'.zip')];inventory.write_text(json.dumps(doc))
+                with self.assertRaises(r.BuildFailure):r.artifact_receipt(root,target,revision)
+
+    def test_workflow_has_only_raw_payload_glob_and_no_installer_compilers(self):
+        workflow=(Path(__file__).parent/'.github/workflows/headspace-release.yml').read_text()
+        self.assertEqual(set(r.FORMATS.values()),{('binary',)})
+        self.assertIn('/headspace-dist/headspace-*',workflow)
+        for old in ['wix --version','headspace-*.deb','headspace-*.rpm','headspace-*.dmg','headspace-*.msi','headspace-*.app.zip']:
+            self.assertNotIn(old,workflow)
 
 
 if __name__=='__main__':unittest.main()

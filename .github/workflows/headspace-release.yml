@@ -1,4 +1,4 @@
-name: Headspace trusted native packages
+name: Headspace six native executables
 on:
   workflow_dispatch:
     inputs:
@@ -40,12 +40,12 @@ jobs:
         run: |
           python -m unittest -v test_probe.py test_headspace_source_build.py test_headspace_release_build.py test_sdk_artifacts.py test_bloom_profile.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Linux native build and packaging prerequisites
+      - name: Linux native build and GUI-test prerequisites
         if: runner.os == 'Linux'
         shell: bash
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends build-essential cmake clang lld llvm pkg-config libasound2-dev libfontconfig-dev libglib2.0-dev libssl-dev libva-dev libvulkan-dev libwayland-dev libx11-xcb-dev libxkbcommon-x11-dev libzstd-dev libsqlite3-dev libstdc++-14-dev libsecret-1-dev libcurl4-openssl-dev libsodium-dev dpkg-dev rpm desktop-file-utils cage mesa-vulkan-drivers ffmpeg
+          sudo apt-get install -y --no-install-recommends build-essential cmake clang lld llvm pkg-config libasound2-dev libfontconfig-dev libglib2.0-dev libssl-dev libva-dev libvulkan-dev libwayland-dev libx11-xcb-dev libxkbcommon-x11-dev libzstd-dev libsqlite3-dev libstdc++-14-dev libsecret-1-dev libcurl4-openssl-dev libsodium-dev cage mesa-vulkan-drivers ffmpeg
           ffmpeg -version >/dev/null
           ffprobe -version >/dev/null
       - name: macOS native build and media-test prerequisites
@@ -57,14 +57,7 @@ jobs:
           brew list --versions ffmpeg >/dev/null || brew install ffmpeg
           ffmpeg -version >/dev/null
           ffprobe -version >/dev/null
-      - name: Windows pinned WiX installer compiler
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          dotnet tool install --tool-path "$env:RUNNER_TEMP/headspace-tools" wix --version 5.0.2
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          "$env:RUNNER_TEMP/headspace-tools" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-      - name: Native source, SDK, tests and compiled packages
+      - name: Native source, SDK, tests and one executable
         shell: pwsh
         env:
           BLOOM_ARTIFACT_KEY: ${{ secrets.BLOOM_ARTIFACT_KEY }}
@@ -73,7 +66,7 @@ jobs:
         run: |
           python scripts/headspace_release_build.py build --runner $env:HEADSPACE_BUILD_RUNNER "--revision=$env:HEADSPACE_SOURCE_REVISION" "--version=$env:HEADSPACE_PACKAGE_VERSION" --output "$env:RUNNER_TEMP/headspace-dist"
           exit $LASTEXITCODE
-      - name: Retain only compiled packages and bounded public receipts
+      - name: Retain one executable and bounded qualification receipts
         if: always()
         # actions/upload-artifact v4, official tag resolved 2026-10-18.
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -84,14 +77,7 @@ jobs:
           path: |
             ${{ runner.temp }}/headspace-dist/failure-*.aesgcm
             ${{ runner.temp }}/headspace-dist/failure-*.manifest.json
-            ${{ runner.temp }}/headspace-dist/headspace-*.deb
-            ${{ runner.temp }}/headspace-dist/headspace-*.rpm
-            ${{ runner.temp }}/headspace-dist/headspace-*.app.zip
-            ${{ runner.temp }}/headspace-dist/headspace-*.dmg
-            ${{ runner.temp }}/headspace-dist/headspace-*.pkg
-            ${{ runner.temp }}/headspace-dist/headspace-*.msi
-            ${{ runner.temp }}/headspace-dist/headspace-*.winget.zip
-            ${{ runner.temp }}/headspace-dist/headspace-*.rb
+            ${{ runner.temp }}/headspace-dist/headspace-*
             ${{ runner.temp }}/headspace-dist/inventory-*.json
             ${{ runner.temp }}/headspace-dist/build-*.json
             ${{ runner.temp }}/headspace-dist/verify-*.json
