@@ -22,6 +22,8 @@ import tomllib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import probe
+from sdk_consumer import consume as consume_sdk
+from sdk_artifacts import ArtifactError
 from headspace_source_build import BuildFailure, SOURCE_URL, FORMATS, fetch_source, run, validate_revision, stop_child, MAX_LOG_BYTES
 
 MAX_ARCHIVE = 512 * 1024
@@ -317,24 +319,19 @@ def build(args):
             source=Path(temporary)/'source';fetch_source(source,revision)
             source_version(source,version)
             candidate=Path(temporary)/'packages';candidate.mkdir()
-            result['phase']='sdk_extract'
-            sdk_sha=pinned_sdk_sha(source,os.environ.get('BLOOM_SDK_SHA256',''))
-            result['sdk_archive_sha256']=sdk_sha
-            sdk=extract_sdk(args.sdk_file,sdk_sha,source/'.private')
+            result['phase']='sdk_consume'
+            sdk_env,sdk_receipt=consume_sdk(source,target)
+            result['tested_sdk']=sdk_receipt
             result['phase']='native_toolchain'
             rust,_=probe.rust_tool(args.runner,True)
             env=probe.windows_compiler_env(arch)if system=='Windows'else os.environ.copy()
             # No secret chunks are forwarded to compilers or package tools.
             for key in list(env):
-                if key.startswith('BLOOM_SDK_'):env.pop(key)
+                if key.startswith('BLOOM_SDK_')or key in ('BLOOM_ARTIFACT_KEY','GH_TOKEN','GITHUB_TOKEN'):env.pop(key)
             env.update(CARGO_TERM_COLOR='never',CARGO_INCREMENTAL='0',HEADSPACE_PACKAGE_VERSION=version,HEADSPACE_RELEASE_TAG='v'+version)
             env['CARGO_TARGET_DIR']=str(Path(temporary)/'target')
-            env_file=Path(temporary)/'sdk-env.json'
-            result['phase']='sdk_build'
-            run_sdk([sys.executable,str(source/'scripts/ci/build_bloom.py'),'--source',str(sdk),'--output',str(source/'.private/bloom-sdk'),'--env-json',str(env_file),'--target',target],source,env,timeout=900)
-            sdk_env=json.loads(env_file.read_text())
             if not isinstance(sdk_env,dict)or not sdk_env or set(sdk_env)-ALLOWED_ENV or any(not isinstance(v,str)for v in sdk_env.values()):
-                raise BuildFailure('sdk_environment','SDK builder returned an unsupported environment contract')
+                raise BuildFailure('sdk_environment','Tested SDK link environment is not allowlisted')
             env.update(sdk_env)
             for phase,sub in [('cargo_test','test'),('cargo_build','build')]:
                 result['phase']=phase
@@ -377,7 +374,7 @@ def build(args):
     except BuildFailure as exc:
         if isinstance(exc,SdkFailure)and exc.report is not None:result['cargo_diagnostics'if isinstance(exc,CargoFailure)else'sdk_diagnostics']=exc.report
         result['blocker']=dict(code=exc.code,message=str(exc))
-    except (OSError,ValueError,RuntimeError,probe.ProbeError):
+    except (ArtifactError,OSError,ValueError,RuntimeError,probe.ProbeError):
         result['blocker']=dict(code='release_adapter_failed',message='Native release lane failed during '+result['phase'])
     report=output/('build-'+target+'.json');report.write_text(json.dumps(result,indent=2)+'\n')
     print(json.dumps(result,indent=2))
@@ -390,7 +387,7 @@ def build(args):
 def main(argv=None):
     parser=argparse.ArgumentParser(description=__doc__);sub=parser.add_subparsers(dest='command',required=True)
     append=sub.add_parser('append-sdk');append.add_argument('--index',type=int,required=True);append.add_argument('--file',type=Path,required=True)
-    release=sub.add_parser('build');release.add_argument('--runner',choices=probe.TARGETS,required=True);release.add_argument('--revision',required=True);release.add_argument('--version',required=True);release.add_argument('--sdk-file',type=Path,required=True);release.add_argument('--output',type=Path,required=True)
+    release=sub.add_parser('build');release.add_argument('--runner',choices=probe.TARGETS,required=True);release.add_argument('--revision',required=True);release.add_argument('--version',required=True);release.add_argument('--output',type=Path,required=True)
     args=parser.parse_args(argv)
     try:
         if args.command=='append-sdk':append_sdk(args.file,args.index,os.environ.get('HEADSPACE_SDK_CHUNK',''),sdk_count(os.environ.get('BLOOM_SDK_CHUNKS')));return 0
