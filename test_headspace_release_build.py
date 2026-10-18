@@ -44,6 +44,29 @@ class ReleaseTests(unittest.TestCase):
         self.assertTrue({'cage','mesa-vulkan-drivers'} <= packages)
         self.assertFalse({'weston','xvfb','xserver-xorg-video-dummy'} & packages)
 
+    def test_checkpoint_metrics_are_exact_bounded_data_not_log_text(self):
+        valid=dict(operation='save',duration_us=123456,success=True)
+        def line(item):return b'HEADSPACE_CHECKPOINT_METRIC '+json.dumps(item).encode()+b'\n'
+        invalid=[dict(valid,duration_us=True),dict(valid,duration_us=-1),dict(valid,duration_us=2_400_000_001),
+                 dict(valid,duration_us='42'),dict(valid,success=1),dict(valid,operation='PRIVATE'),dict(valid,path='/PRIVATE')]
+        lines=[b'PRIVATE raw source text\n',b'prefix '+line(valid),b'HEADSPACE_CHECKPOINT_METRIC invalid',
+               b'HEADSPACE_CHECKPOINT_METRIC {"operation":"save","operation":"camera","duration_us":1,"success":true}']
+        lines += [line(item)for item in invalid]+[line(valid)]*101
+        report=r.checkpoint_metrics(lines)
+        self.assertEqual(report,dict(events=[valid]*100,omitted_count=1))
+        self.assertNotIn('PRIVATE',json.dumps(report))
+        self.assertEqual(r.checkpoint_metrics([b'HEADSPACE_CHECKPOINT_METRIC '+b' '*600]),dict(events=[],omitted_count=0))
+
+    def test_successful_cargo_returns_only_checkpoint_metrics_and_strips_secrets(self):
+        with tempfile.TemporaryDirectory()as directory:
+            source=Path(directory);pin=source/'docs/release/bloom-sdk-input.json';pin.parent.mkdir(parents=True);pin.write_text('{"diagnostic_files":[]}')
+            metric=dict(operation='camera',duration_us=42,success=True)
+            code='import os,sys;assert "BLOOM_ARTIFACT_KEY" not in os.environ;print("PRIVATE raw body");sys.stderr.write('+repr('\nHEADSPACE_CHECKPOINT_METRIC '+json.dumps(metric)+'\n')+')'
+            with patch('builtins.print')as emit:
+                report=r.run_cargo([sys.executable,'-c',code],'cargo_test',source,dict(BLOOM_ARTIFACT_KEY='PRIVATE'),timeout=5)
+                emit.assert_not_called()
+            self.assertEqual(report,dict(events=[metric],omitted_count=0))
+
     def test_phase_progress_is_flushed_and_cannot_emit_arbitrary_data(self):
         target='aarch64-unknown-linux-gnu'
         with patch('builtins.print') as emit:

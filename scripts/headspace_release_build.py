@@ -256,6 +256,29 @@ def safe_cargo_report(output, allowed_public, allowed_sdk):
     return dict(diagnostics=diagnostics,classifications=classifications)
 
 
+def checkpoint_metrics(lines):
+    """Allow only source-owned numeric test measurements, never Cargo log text."""
+    prefix=b'HEADSPACE_CHECKPOINT_METRIC '
+    events=[];omitted=0
+    def exact_object(pairs):
+        result={}
+        for key,value in pairs:
+            if key in result:raise ValueError('Duplicate metric field')
+            result[key]=value
+        return result
+    for line in lines:
+        if not isinstance(line,bytes) or len(line)>512 or not line.startswith(prefix):continue
+        try:item=json.loads(line[len(prefix):].decode('utf-8'),object_pairs_hook=exact_object)
+        except (ValueError,UnicodeDecodeError):continue
+        if (not isinstance(item,dict) or set(item)!={'operation','duration_us','success'}
+            or item['operation'] not in ('save','camera')
+            or type(item['duration_us'])is not int or not 0<=item['duration_us']<=2_400_000_000
+            or type(item['success'])is not bool):continue
+        if len(events)<100:events.append(item)
+        else:omitted+=1
+    return dict(events=events,omitted_count=omitted)
+
+
 def run_cargo(command,phase,source,env,timeout=2400,failure_output=None,failure_identity=None):
     allowed_public=set()
     for path in source.rglob('*.rs'):
@@ -283,6 +306,8 @@ def run_cargo(command,phase,source,env,timeout=2400,failure_output=None,failure_
             error=CargoFailure(phase+'_failed','Native Cargo failed; raw output remains private',report)
             error.encrypted_log=retain_private_failure(raw,size,failure_output,failure_identity)
             raise error
+        output.seek(0)
+        return checkpoint_metrics(output)
 
 
 def validate_version(value):
@@ -396,7 +421,8 @@ def build(args):
                 result['phase']=phase
                 command=product_cargo_command(rust,target,sub)
                 phase_progress(target,phase,'running')
-                run_cargo(command,phase,source,env,timeout=2400,failure_output=output,failure_identity=hosted_failure_identity(source,target,version,revision,phase,sdk_receipt['producer']['recipe_revision']));result[phase]='passed'
+                metrics=run_cargo(command,phase,source,env,timeout=2400,failure_output=output,failure_identity=hosted_failure_identity(source,target,version,revision,phase,sdk_receipt['producer']['recipe_revision']));result[phase]='passed'
+                if metrics['events'] or metrics['omitted_count']:result.setdefault('checkpoint_metrics',{})[phase]=metrics
                 phase_progress(target,phase,'passed')
             result['phase']='package'
             for fmt in FORMATS[system]:
