@@ -1,0 +1,255 @@
+name: Headspace trusted native packages
+on:
+  workflow_dispatch:
+    inputs:
+      source_revision:
+        description: Exact public Gitea Headspace commit (40 hex characters)
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  packages:
+    if: github.event.repository.private == false
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm, windows-2025, windows-11-arm, macos-15-intel, macos-15]
+    env:
+      BLOOM_SDK_CHUNKS: ${{ vars.BLOOM_SDK_CHUNKS }}
+      BLOOM_SDK_SHA256: ${{ vars.BLOOM_SDK_SHA256 }}
+      HEADSPACE_PACKAGE_VERSION: 0.1.${{ github.run_number }}
+    steps:
+      - name: Read trusted public adapter
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Offline adapter contract tests
+        shell: pwsh
+        run: |
+          python -m unittest -v test_probe.py test_headspace_source_build.py test_headspace_release_build.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Linux native build and packaging prerequisites
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends build-essential cmake clang lld llvm pkg-config libasound2-dev libfontconfig-dev libglib2.0-dev libssl-dev libva-dev libvulkan-dev libwayland-dev libx11-xcb-dev libxkbcommon-x11-dev libzstd-dev libsqlite3-dev libstdc++-14-dev libsecret-1-dev libcurl4-openssl-dev libsodium-dev dpkg-dev rpm desktop-file-utils
+      - name: macOS native static OpenSSL prerequisite
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          brew list --versions openssl@3 >/dev/null || brew install openssl@3
+          test -f "$(brew --prefix openssl@3)/lib/libcrypto.a"
+      - name: Windows pinned WiX installer compiler
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          dotnet tool install --tool-path "$env:RUNNER_TEMP/headspace-tools" wix --version 5.0.2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "$env:RUNNER_TEMP/headspace-tools" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+      - name: Assemble private SDK chunk 01
+        shell: pwsh
+        env:
+          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_01 }}
+        run: |
+          python scripts/headspace_release_build.py append-sdk --index 1 --file "$env:RUNNER_TEMP/headspace-sdk.b64"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Assemble private SDK chunk 02
+        shell: pwsh
+        env:
+          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_02 }}
+        run: |
+          python scripts/headspace_release_build.py append-sdk --index 2 --file "$env:RUNNER_TEMP/headspace-sdk.b64"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Assemble private SDK chunk 03
+        shell: pwsh
+        env:
+          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_03 }}
+        run: |
+          python scripts/headspace_release_build.py append-sdk --index 3 --file "$env:RUNNER_TEMP/headspace-sdk.b64"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Assemble private SDK chunk 04
+        shell: pwsh
+        env:
+          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_04 }}
+        run: |
+          python scripts/headspace_release_build.py append-sdk --index 4 --file "$env:RUNNER_TEMP/headspace-sdk.b64"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Assemble private SDK chunk 05
+        shell: pwsh
+        env:
+          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_05 }}
+        run: |
+          python scripts/headspace_release_build.py append-sdk --index 5 --file "$env:RUNNER_TEMP/headspace-sdk.b64"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Assemble private SDK chunk 06
+        shell: pwsh
+        env:
+          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_06 }}
+        run: |
+          python scripts/headspace_release_build.py append-sdk --index 6 --file "$env:RUNNER_TEMP/headspace-sdk.b64"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Assemble private SDK chunk 07
+        shell: pwsh
+        env:
+          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_07 }}
+        run: |
+          python scripts/headspace_release_build.py append-sdk --index 7 --file "$env:RUNNER_TEMP/headspace-sdk.b64"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Assemble private SDK chunk 08
+        shell: pwsh
+        env:
+          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_08 }}
+        run: |
+          python scripts/headspace_release_build.py append-sdk --index 8 --file "$env:RUNNER_TEMP/headspace-sdk.b64"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Assemble private SDK chunk 09
+        shell: pwsh
+        env:
+          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_09 }}
+        run: |
+          python scripts/headspace_release_build.py append-sdk --index 9 --file "$env:RUNNER_TEMP/headspace-sdk.b64"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Assemble private SDK chunk 10
+        shell: pwsh
+        env:
+          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_10 }}
+        run: |
+          python scripts/headspace_release_build.py append-sdk --index 10 --file "$env:RUNNER_TEMP/headspace-sdk.b64"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Assemble private SDK chunk 11
+        shell: pwsh
+        env:
+          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_11 }}
+        run: |
+          python scripts/headspace_release_build.py append-sdk --index 11 --file "$env:RUNNER_TEMP/headspace-sdk.b64"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Assemble private SDK chunk 12
+        shell: pwsh
+        env:
+          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_12 }}
+        run: |
+          python scripts/headspace_release_build.py append-sdk --index 12 --file "$env:RUNNER_TEMP/headspace-sdk.b64"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Assemble private SDK chunk 13
+        shell: pwsh
+        env:
+          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_13 }}
+        run: |
+          python scripts/headspace_release_build.py append-sdk --index 13 --file "$env:RUNNER_TEMP/headspace-sdk.b64"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Assemble private SDK chunk 14
+        shell: pwsh
+        env:
+          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_14 }}
+        run: |
+          python scripts/headspace_release_build.py append-sdk --index 14 --file "$env:RUNNER_TEMP/headspace-sdk.b64"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Assemble private SDK chunk 15
+        shell: pwsh
+        env:
+          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_15 }}
+        run: |
+          python scripts/headspace_release_build.py append-sdk --index 15 --file "$env:RUNNER_TEMP/headspace-sdk.b64"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Assemble private SDK chunk 16
+        shell: pwsh
+        env:
+          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_16 }}
+        run: |
+          python scripts/headspace_release_build.py append-sdk --index 16 --file "$env:RUNNER_TEMP/headspace-sdk.b64"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Assemble private SDK chunk 17
+        shell: pwsh
+        env:
+          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_17 }}
+        run: |
+          python scripts/headspace_release_build.py append-sdk --index 17 --file "$env:RUNNER_TEMP/headspace-sdk.b64"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Assemble private SDK chunk 18
+        shell: pwsh
+        env:
+          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_18 }}
+        run: |
+          python scripts/headspace_release_build.py append-sdk --index 18 --file "$env:RUNNER_TEMP/headspace-sdk.b64"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Assemble private SDK chunk 19
+        shell: pwsh
+        env:
+          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_19 }}
+        run: |
+          python scripts/headspace_release_build.py append-sdk --index 19 --file "$env:RUNNER_TEMP/headspace-sdk.b64"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Assemble private SDK chunk 20
+        shell: pwsh
+        env:
+          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_20 }}
+        run: |
+          python scripts/headspace_release_build.py append-sdk --index 20 --file "$env:RUNNER_TEMP/headspace-sdk.b64"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Assemble private SDK chunk 21
+        shell: pwsh
+        env:
+          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_21 }}
+        run: |
+          python scripts/headspace_release_build.py append-sdk --index 21 --file "$env:RUNNER_TEMP/headspace-sdk.b64"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Assemble private SDK chunk 22
+        shell: pwsh
+        env:
+          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_22 }}
+        run: |
+          python scripts/headspace_release_build.py append-sdk --index 22 --file "$env:RUNNER_TEMP/headspace-sdk.b64"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Assemble private SDK chunk 23
+        shell: pwsh
+        env:
+          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_23 }}
+        run: |
+          python scripts/headspace_release_build.py append-sdk --index 23 --file "$env:RUNNER_TEMP/headspace-sdk.b64"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Assemble private SDK chunk 24
+        shell: pwsh
+        env:
+          HEADSPACE_SDK_CHUNK: ${{ secrets.BLOOM_SDK_24 }}
+        run: |
+          python scripts/headspace_release_build.py append-sdk --index 24 --file "$env:RUNNER_TEMP/headspace-sdk.b64"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Native source, SDK, tests and compiled packages
+        shell: pwsh
+        env:
+          HEADSPACE_SOURCE_REVISION: ${{ inputs.source_revision }}
+          HEADSPACE_BUILD_RUNNER: ${{ matrix.runner }}
+        run: |
+          python scripts/headspace_release_build.py build --runner $env:HEADSPACE_BUILD_RUNNER "--revision=$env:HEADSPACE_SOURCE_REVISION" --sdk-file "$env:RUNNER_TEMP/headspace-sdk.b64" --output "$env:RUNNER_TEMP/headspace-dist"
+          exit $LASTEXITCODE
+      - name: Retain only compiled packages and bounded public receipts
+        if: always()
+        # actions/upload-artifact v4, official tag resolved 2026-10-18.
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: headspace-${{ matrix.runner }}-${{ inputs.source_revision }}
+          retention-days: 3
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/headspace-dist/headspace-*.deb
+            ${{ runner.temp }}/headspace-dist/headspace-*.rpm
+            ${{ runner.temp }}/headspace-dist/headspace-*.app.zip
+            ${{ runner.temp }}/headspace-dist/headspace-*.dmg
+            ${{ runner.temp }}/headspace-dist/headspace-*.pkg
+            ${{ runner.temp }}/headspace-dist/headspace-*.msi
+            ${{ runner.temp }}/headspace-dist/headspace-*.winget.zip
+            ${{ runner.temp }}/headspace-dist/headspace-*.rb
+            ${{ runner.temp }}/headspace-dist/inventory-*.json
+            ${{ runner.temp }}/headspace-dist/build-*.json
+            ${{ runner.temp }}/headspace-dist/verify-*.json
+      - name: Remove only this job's encoded private input
+        if: always()
+        shell: pwsh
+        run: |
+          Remove-Item -LiteralPath "$env:RUNNER_TEMP/headspace-sdk.b64" -ErrorAction SilentlyContinue

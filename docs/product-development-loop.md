@@ -52,3 +52,28 @@ Worker source `11e26a25dc70bdd990de2198b5edd7d5ba167edc` was committed/pushed to
 The repair `1756cd0f80a0a471919afa774fe1ea9b634c4c21` recognizes POSIX and Windows rooted paths independently of host grammar; all27 offline tests pass. [Rerun39150293870](https://github.com/mulitvac-backstack/native-build-probes/actions/runs/39150293870) checks the same exact Headspace source and retains [six explicit blocked source/package reports](../verification/2026-10-18-headspace-blocked-run.json). Linux `.deb`/`.rpm`, macOS `.app`/`.dmg`/`.pkg`/Homebrew and Windows MSI/WinGet remain `not_run` while the private/nonportable Bloom dependency blocks clean source. Required targets are visible failures rather than omitted or successfully skipped. Next steps are authorized dependency portability, actual source-owned package recipes, artifact receipts/retention and native product qualification; compiler feasibility is already passed separately.
 
 The actual GPUI application increment `e7c3a5f0a936bd8e7b94695a5f4160f0bbf749ba` was pushed and dispatched during implementation in [run39151925893](https://github.com/mulitvac-backstack/native-build-probes/actions/runs/39151925893). All six native clean-source checks fetch/verify that exact revision and expose the existing private Bloom path; every package format remains unrun. [Reports](../verification/2026-10-18-headspace-e7c3a5f-run.json) preserve this separately from local GPUI build/runtime evidence. The preceding feasibility increment's [run39150598356](https://github.com/mulitvac-backstack/native-build-probes/actions/runs/39150598356) likewise records all six dependency blocks [without omission](../verification/2026-10-18-headspace-dfd07d4-run.json).
+
+## Owner-authorized trusted Headspace package lane
+
+Value: the owner now requests every native build and Gitea release downloads.
+Feasibility reuses the six verified standard native runners and source-owned
+package tools. The private engine's macOS/Windows portability remains pending
+actual product builds; those target gates cannot pass by inference.
+
+Design final: preserve both original workflows. A separate trusted manual
+`headspace-release.yml` accepts only the immutable public Headspace SHA; it
+assembles a source-pinned private SDK from24 bounded encrypted input chunks.
+The engine stays ephemeral and is never committed/cached/uploaded. Only validated
+compiled packages and bounded hash/qualification receipts leave the runner.
+No paid runner or Gitea write secret is introduced. Headspace's
+`docs/release/trusted-build-inputs.md` defines the precise lane/privacy contract.
+
+Implementation: the adapter validates SHA/count/paths/decompression bounds,
+native identity, SDK environment, product-only tests and required artifact names,
+formats and hashes. Real install/runtime qualification remains separate; a
+failure is retained honestly alongside valid unsigned development packages.
+Thirty-three offline adapter tests pass. The package recipe's five tests and
+native ARM64 DEB tool fixture also pass; that fixture is not a product release.
+Next: push the coherent adapter, stage the immutable SDK and run the six actual
+product builds. Gitea publication is separately owner-authorized and occurs only
+after real package checksums and their qualification limits are concrete.
