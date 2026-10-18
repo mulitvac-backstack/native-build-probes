@@ -13,6 +13,8 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import shutil
+import subprocess
+import time
 import sys
 import tarfile
 import tempfile
@@ -20,7 +22,7 @@ import tomllib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import probe
-from headspace_source_build import BuildFailure, SOURCE_URL, FORMATS, fetch_source, run, validate_revision
+from headspace_source_build import BuildFailure, SOURCE_URL, FORMATS, fetch_source, run, validate_revision, stop_child, MAX_LOG_BYTES
 
 MAX_ARCHIVE = 512 * 1024
 MAX_EXTRACTED = 128 * 1024 * 1024
@@ -110,6 +112,57 @@ def extract_sdk(encoded, expected_sha, destination):
         except (tarfile.TarError, OSError, EOFError) as exc:
             raise BuildFailure('sdk_archive_invalid','SDK archive extraction failed') from exc
     return destination/'bloomdb'
+
+
+class SdkFailure(BuildFailure):
+    def __init__(self,code,message,report=None):
+        self.report=report
+        super().__init__(code,message)
+
+
+def safe_sdk_report(output, allowed_files):
+    """Forward only verified relative source coordinates/compiler codes."""
+    for line in output.splitlines():
+        if len(line)>8192:continue
+        try:document=json.loads(line)
+        except ValueError:continue
+        if not isinstance(document,dict)or document.get('phase')not in ('configure','compile','test','install'):continue
+        exit_code=document.get('exit_code')
+        if type(exit_code)is not int or not -255<=exit_code<=4294967295:continue
+        diagnostics=[]
+        candidates=document.get('diagnostics',[])
+        if not isinstance(candidates,list):continue
+        for entry in candidates[:20]:
+            if not isinstance(entry,dict):continue
+            item={}
+            file=entry.get('file');location=entry.get('line');code=entry.get('code')
+            if isinstance(file,str)and file in allowed_files and len(file)<=200 and type(location)is int and 1<=location<=10000000:
+                item.update(file=file,line=location)
+            if isinstance(code,str)and re.fullmatch(r'(?:C[0-9]{4}|LNK[0-9]{4}|E[0-9]{4})',code):item['code']=code
+            if item:diagnostics.append(item)
+        return dict(phase=document['phase'],exit_code=exit_code,diagnostics=diagnostics)
+    return None
+
+
+def run_sdk(command,source,env,timeout=900):
+    allowed={'adapter/platform.c','adapter/platform.h','adapter/sdk_smoke.c'}
+    manifest=json.loads((source/'docs/release/bloom-sdk-input.json').read_text())
+    allowed.update(entry['path']for entry in manifest.get('snapshot_files',[])if isinstance(entry,dict)and isinstance(entry.get('path'),str))
+    with tempfile.TemporaryFile()as output:
+        try:child=subprocess.Popen(command,cwd=source,env=env,stdout=output,stderr=output,shell=False,start_new_session=os.name=='posix')
+        except OSError as exc:raise SdkFailure('sdk_build_unavailable','Native SDK driver unavailable')from exc
+        deadline=time.monotonic()+timeout
+        while child.poll()is None:
+            if time.monotonic()>=deadline:
+                stop_child(child);raise SdkFailure('sdk_build_timeout','Native SDK driver exceeded time limit')
+            if os.fstat(output.fileno()).st_size>MAX_LOG_BYTES:
+                stop_child(child);raise SdkFailure('sdk_build_output_limit','Native SDK driver exceeded private log bound')
+            time.sleep(0.1)
+        if child.returncode:
+            size=os.fstat(output.fileno()).st_size
+            output.seek(max(0,size-65536))
+            report=safe_sdk_report(output.read(65536).decode('utf-8',errors='replace'),allowed)
+            raise SdkFailure('sdk_build_failed','Native SDK driver failed; raw compiler output remains private',report)
 
 
 def validate_version(value):
@@ -211,7 +264,7 @@ def build(args):
             env['CARGO_TARGET_DIR']=str(Path(temporary)/'target')
             env_file=Path(temporary)/'sdk-env.json'
             result['phase']='sdk_build'
-            run([sys.executable,str(source/'scripts/ci/build_bloom.py'),'--source',str(sdk),'--output',str(source/'.private/bloom-sdk'),'--env-json',str(env_file),'--target',target],'sdk_build',cwd=source,env=env,timeout=900)
+            run_sdk([sys.executable,str(source/'scripts/ci/build_bloom.py'),'--source',str(sdk),'--output',str(source/'.private/bloom-sdk'),'--env-json',str(env_file),'--target',target],source,env,timeout=900)
             sdk_env=json.loads(env_file.read_text())
             if not isinstance(sdk_env,dict)or not sdk_env or set(sdk_env)-ALLOWED_ENV or any(not isinstance(v,str)for v in sdk_env.values()):
                 raise BuildFailure('sdk_environment','SDK builder returned an unsupported environment contract')
@@ -255,6 +308,7 @@ def build(args):
             (output/('inventory-'+target+'.json')).write_text(json.dumps(receipt,indent=2)+'\n')
             result.update(status='passed',phase='completed')
     except BuildFailure as exc:
+        if isinstance(exc,SdkFailure)and exc.report is not None:result['sdk_diagnostics']=exc.report
         result['blocker']=dict(code=exc.code,message=str(exc))
     except (OSError,ValueError,RuntimeError,probe.ProbeError):
         result['blocker']=dict(code='release_adapter_failed',message='Native release lane failed during '+result['phase'])

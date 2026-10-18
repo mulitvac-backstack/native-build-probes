@@ -56,6 +56,19 @@ class ReleaseTests(unittest.TestCase):
             self.assertEqual(r.source_version(source,'0.1.0-alpha.1'),'0.1.0-alpha.1')
             with self.assertRaises(r.BuildFailure):r.source_version(source,'0.1.77')
 
+    def test_sdk_diagnostics_forward_only_allowlisted_coordinates_and_codes(self):
+        report={'phase':'compile','exit_code':2,'private':'DO NOT EXPOSE','diagnostics':[
+            {'file':'src/bloom.c','line':42,'code':'C2065','message':'SECRET symbol source text'},
+            {'file':'/private/absolute.c','line':7,'code':'C9999','message':'PRIVATE'},
+            {'file':'src/bloom.c','line':-1,'code':'SECRET'},
+            {'file':'../escape.c','line':10,'code':'raw source'},
+            {'code':'LNK2019','message':'PRIVATE external symbol'}]}
+        sanitized=r.safe_sdk_report('private raw output\n'+json.dumps(report),{'src/bloom.c'})
+        self.assertEqual(sanitized,dict(phase='compile',exit_code=2,diagnostics=[dict(file='src/bloom.c',line=42,code='C2065'),dict(code='C9999'),dict(code='LNK2019')]))
+        self.assertNotIn('SECRET',json.dumps(sanitized));self.assertNotIn('private',json.dumps(sanitized))
+        self.assertIsNone(r.safe_sdk_report('raw compiler source',set()))
+        self.assertIsNone(r.safe_sdk_report(json.dumps({'phase':'arbitrary private payload','exit_code':1,'diagnostics':[]}),set()))
+
     def test_sdk_chunks_are_bounded_and_counted(self):
         with tempfile.TemporaryDirectory()as directory:
             path=Path(directory)/'sdk'
