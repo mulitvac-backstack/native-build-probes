@@ -19,6 +19,7 @@ from headspace_source_build import BuildFailure, fetch_source, stop_child
 SOURCE_URL = "https://git.multivac.network/backstack.io/headspace.git"
 MAX_LOG = 8 * 1024 * 1024
 MAX_RECEIPT = 64 * 1024
+PLATFORMS = {"linux":"Linux", "macos":"Darwin", "windows":"Windows"}
 HARNESSES = {
     "endpoint": ("native-live-endpoint", "passed_native_security_fixture"),
     "appkit": ("native-macos-interop", "passed_native_appkit_protocol_fixture"),
@@ -113,6 +114,7 @@ def receipt(path, name, label):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--runner", choices=probe.TARGETS, required=True)
+    parser.add_argument("--platform", choices=("all", *PLATFORMS), default="all")
     parser.add_argument("--revision", required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
@@ -122,6 +124,8 @@ def main(argv=None):
                   scope="native endpoint security and OS transfer protocol fixtures, not physical browser gestures or full product qualification")
     try:
         source_revision = revision(args.revision)
+        if args.platform != "all" and probe.TARGETS[args.runner][0] != PLATFORMS[args.platform]:
+            raise BuildFailure("runner_platform_mismatch", "Runner must belong to the fixed selected platform")
         identity = probe.machine_identity()
         probe.validate_native(args.runner, identity["os"], identity["native_arch"], identity["process_arch"], identity["translated"])
         result["native_identity"] = identity
@@ -137,14 +141,31 @@ def main(argv=None):
             result["phase"] = "source_fetch"
             fetch_source(source, source_revision, execute=run)
             env["CARGO_TARGET_DIR"] = str(Path(temporary) / "target")
+            failures = []
             for name in harnesses(args.runner):
                 result["phase"] = "native_" + name
-                path = manifest(source, name)
                 report = args.output / ("native-" + name + ".json")
-                cargo = rust_command[:-1] + ["cargo", "run", "--locked", "--manifest-path", str(path), "--target", probe.TARGETS[args.runner][2], "--", str(report.resolve())]
-                run(cargo, result["phase"], cwd=Path(temporary), env=env, timeout=600)
-                result["fixtures"][name] = receipt(report, name, args.runner)
-        result.update(status="passed_native_api_fixtures", phase="complete")
+                try:
+                    path = manifest(source, name)
+                    cargo = rust_command[:-1] + ["cargo", "run", "--locked", "--manifest-path", str(path), "--target", probe.TARGETS[args.runner][2], "--", str(report.resolve())]
+                    run(cargo, result["phase"], cwd=Path(temporary), env=env, timeout=600)
+                    result["fixtures"][name] = receipt(report, name, args.runner)
+                except Exception as error:
+                    failures.append(name)
+                    failure={"status":"failed","error_code":error.code if isinstance(error,BuildFailure) else "native_fixture_failed"}
+                    if isinstance(error,BuildFailure) and hasattr(error,"diagnostic"):
+                        failure.update(diagnostic=error.diagnostic,exit_code=error.exit_code)
+                    else:
+                        failure["diagnostic"]=str(error)[:1800]
+                    # A failing security fixture emits only bounded static codes/OS status.
+                    if report.is_file() and not report.is_symlink() and report.stat().st_size<=MAX_RECEIPT:
+                        try:
+                            value=json.loads(report.read_text())
+                            if isinstance(value,dict):failure["native_receipt"]=value
+                        except (ValueError,OSError):pass
+                    result["fixtures"][name]=failure
+            result.update(status="failed" if failures else "passed_native_api_fixtures",phase="complete")
+            if failures:result.update(error_code="native_fixture_failed",failed_fixtures=failures)
     except Exception as error:
         result["error_code"] = error.code if isinstance(error, BuildFailure) else "native_interop_failed"
         if isinstance(error, BuildFailure) and hasattr(error, "diagnostic"):

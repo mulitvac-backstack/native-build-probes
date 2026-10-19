@@ -6,6 +6,11 @@ on:
         description: Exact public Gitea Headspace source revision (lowercase SHA40)
         required: true
         type: string
+      platform:
+        description: Fixed native API target subset; no product build
+        type: choice
+        default: all
+        options: [all, linux, macos, windows]
 permissions:
   contents: read
 jobs:
@@ -17,7 +22,7 @@ jobs:
       fail-fast: false
       max-parallel: 6
       matrix:
-        runner: [ubuntu-24.04, ubuntu-24.04-arm, windows-2025, windows-11-arm, macos-15-intel, macos-15]
+        runner: ${{ fromJSON(inputs.platform == 'windows' && '["windows-2025","windows-11-arm"]' || inputs.platform == 'macos' && '["macos-15-intel","macos-15"]' || inputs.platform == 'linux' && '["ubuntu-24.04","ubuntu-24.04-arm"]' || '["ubuntu-24.04","ubuntu-24.04-arm","windows-2025","windows-11-arm","macos-15-intel","macos-15"]') }}
     steps:
       - name: Read trusted public native fixture adapter
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -29,8 +34,9 @@ jobs:
         env:
           HEADSPACE_SOURCE_REVISION: ${{ inputs.source_revision }}
           HEADSPACE_BUILD_RUNNER: ${{ matrix.runner }}
+          HEADSPACE_BUILD_PLATFORM: ${{ inputs.platform }}
         run: |
-          python scripts/headspace_native_interop.py --runner $env:HEADSPACE_BUILD_RUNNER "--revision=$env:HEADSPACE_SOURCE_REVISION" --output "$env:RUNNER_TEMP/headspace-native-interop"
+          python scripts/headspace_native_interop.py --platform $env:HEADSPACE_BUILD_PLATFORM --runner $env:HEADSPACE_BUILD_RUNNER "--revision=$env:HEADSPACE_SOURCE_REVISION" --output "$env:RUNNER_TEMP/headspace-native-interop"
           exit $LASTEXITCODE
       - name: Retain bounded native API receipts
         if: always()
