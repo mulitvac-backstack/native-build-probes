@@ -108,3 +108,15 @@ checkpoint. The owner must stage the exact Bloom-owned archive through
 source revision `9ed34ee94eb1a2682c2a337dcd86af83bfe3bc87` and
 `sdk_version=0.1.0-alpha.2`. Six passing native artifacts and owner authentication
 are required before canonical Bloom publication and consumer promotion.
+
+
+## Headspace native transfer feasibility harness (2026-10-19)
+
+Scope: a separate bounded native-API check consumes the exact public Headspace
+source SHA, compiling its production AppKit reader/drag destination through the
+source-owned independent experiment. Two fixed native Mac architectures; no
+Bloom inputs, GPUI app build, host clipboard mutation, cache, paid runner, private
+source or credentials. It checks AppKit pasteboard fixtures and synthetic drag
+callbacks; physical Safari/Chrome and app integration remain separate pending
+acceptance. Only its bounded JSON receipt is retained. Value and existing journey
+design are unchanged; this resolves API feasibility before the next app matrix.
