@@ -1,4 +1,5 @@
 name: Headspace six native executables
+run-name: Headspace ${{ inputs.version }} @ ${{ inputs.source_revision }}
 on:
   workflow_dispatch:
     inputs:
