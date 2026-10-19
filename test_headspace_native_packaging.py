@@ -185,6 +185,92 @@ class NativePackagingTests(unittest.TestCase):
             self.assertIn(SOURCE, command); self.assertIn(RECIPE, command)
         self.assertRaises(r.BuildFailure, r.recipe_command, 'recipe.py', 'input', 'output', 'windows-2025', SOURCE, VERSION, RECIPE)
 
+    def installer_fixture(self, label='ubuntu-24.04'):
+        checkout=self.root/'owner';(checkout/'scripts').mkdir(parents=True)
+        name='verify-windows-installer.py' if r.TARGETS[label][0]=='Windows' else 'verify-linux-packages.py'
+        verifier=checkout/'scripts'/name;verifier.write_text('# source-owned fixture\n')
+        candidate=self.root/'candidate'
+        if r.TARGETS[label][0]=='Linux':linux_output(candidate,label)
+        else:
+            candidate.mkdir();expected,inventory_name,_=r.output_layout(label,VERSION)
+            for name in expected:(candidate/name).write_bytes(b'controlled fixture')
+            (candidate/inventory_name).write_text(json.dumps(dict(product_code='{PRODUCT}',native_version='1.0.2',recipe_revision=RECIPE)))
+        output=self.root/'retained';output.mkdir()
+        plan=r.installer_command(checkout,candidate,label,SOURCE,VERSION)
+        return checkout,candidate,output,verifier,plan[2]
+
+    def installer_proof(self,candidate,label,verifier):
+        expected,inventory_name,_=r.output_layout(label,VERSION);system=r.TARGETS[label][0];target=r.TARGETS[label][2]
+        proof=dict(schema_version=1,source_revision=SOURCE,target=target,runner=label,verifier_sha256=r.sha(verifier),
+            installed_executable_sha256='d'*64,cli=dict(status='passed',version='passed',embedded_notices=7,mcp=dict(status='passed',embedded_image_bytes=True)),
+            native_gui=dict(status='passed',working_recovery=True,portable_roundtrip=True,native_engine=dict(enabled=True,draw_total_ms=dict(count=3),platform_submit_ms=dict(count=3))))
+        if system=='Linux':
+            deb=candidate/next(name for name,fmt in expected.items() if fmt=='deb')
+            proof.update(status='passed_bounded_native_deb_checks',version=VERSION,installer='deb',package_sha256=r.sha(deb),clean_install='passed',removal='passed',
+                synthetic_working_data_preserved=True,synthetic_bloom_journal_preserved=True,rpm_native_install='unverified_requires_native_rpm_userspace')
+        else:
+            msi=candidate/next(name for name,fmt in expected.items() if fmt=='msi')
+            proof.update(status='passed_native_installer_checks',format='msi',mode='native_install',package_version=VERSION,
+                msi_sha256=r.sha(msi),input_executable_sha256='d'*64,product_code='{PRODUCT}',native_version='1.0.2',package_recipe_revision=RECIPE,
+                same_version_repair='passed',data_preservation='passed_exact_synthetic_bloom_and_marker',
+                removal='passed_payload_product_shortcut_and_registration',owned_cleanup='passed',cross_version_upgrade='unverified_no_predecessor_msi')
+        return proof
+
+    def test_installer_commands_use_pinned_owner_helpers_and_correct_native_flags(self):
+        for label in ('ubuntu-24.04','windows-11-arm'):
+            with tempfile.TemporaryDirectory() as temporary:
+                original=self.root;self.root=Path(temporary)
+                try:
+                    checkout,candidate,output,verifier,receipt=self.installer_fixture(label)
+                    command,actual,path=r.installer_command(checkout,candidate,label,SOURCE,VERSION)
+                    self.assertEqual(actual,verifier);self.assertEqual(path,receipt)
+                    self.assertTrue(path.is_absolute());self.assertIn('--inventory',command)
+                    self.assertEqual('--version' in command,r.TARGETS[label][0]=='Linux')
+                    self.assertEqual('--runner' in command,r.TARGETS[label][0]=='Windows')
+                    self.assertEqual('--msi' in command,r.TARGETS[label][0]=='Windows')
+                    self.assertNotIn('cargo',command)
+                finally:self.root=original
+        self.assertIsNone(r.installer_command(Path('/unused'),Path('/unused'),'macos-15',SOURCE,VERSION))
+
+    def test_installed_native_bytes_journey_removal_and_preservation_are_mandatory(self):
+        for label in ('ubuntu-24.04-arm','windows-2025'):
+            with tempfile.TemporaryDirectory() as temporary:
+                original=self.root;self.root=Path(temporary)
+                try:
+                    _,candidate,_,verifier,receipt=self.installer_fixture(label)
+                    proof=self.installer_proof(candidate,label,verifier);receipt.write_text(json.dumps(proof))
+                    r.validate_installer_receipt(receipt,candidate,label,SOURCE,VERSION,'d'*64,r.sha(verifier))
+                    for mutate in [lambda d:d.update(installed_executable_sha256='f'*64),
+                                   lambda d:d.update(source_revision='f'*40),
+                                   lambda d:d['native_gui'].update(working_recovery=False),
+                                   lambda d:d['cli']['mcp'].update(embedded_image_bytes=False),
+                                   lambda d:d.update(removal='unverified'),
+                                   lambda d:d.update(verifier_sha256='f'*64)]:
+                        changed=copy.deepcopy(proof);mutate(changed);receipt.write_text(json.dumps(changed))
+                        self.assertRaises(r.BuildFailure,r.validate_installer_receipt,receipt,candidate,label,SOURCE,VERSION,'d'*64,r.sha(verifier))
+                finally:self.root=original
+
+    def test_failed_installer_retains_actual_blocked_receipt_without_passing_worker(self):
+        label='windows-11-arm';checkout,candidate,output,verifier,receipt=self.installer_fixture(label);report={}
+        def failed(command,phase,**kwargs):
+            self.assertEqual(phase,'native_installer');self.assertNotIn('GH_TOKEN',kwargs['env'])
+            receipt.write_text(json.dumps(dict(schema_version=1,status='blocked',source_revision=SOURCE,target=r.TARGETS[label][2],runner=label,verifier_sha256=r.sha(verifier))))
+            raise r.BuildFailure('native_installer_failed','fixture native failure')
+        self.assertRaises(r.BuildFailure,r.run_installer,checkout,candidate,output,label,SOURCE,VERSION,'d'*64,RECIPE,{},report,failed)
+        self.assertEqual(report['native_installer_receipt']['status'],'blocked')
+        self.assertEqual((output/receipt.name).read_bytes(),receipt.read_bytes())
+        self.assertNotIn('status',report)
+
+    def test_successful_installer_receipt_is_retained_separately_from_package_inventory(self):
+        label='ubuntu-24.04';checkout,candidate,output,verifier,receipt=self.installer_fixture(label);report={}
+        self.assertRaises(r.BuildFailure,r.validate_outputs,candidate,label,SOURCE,VERSION,RECIPE,'e'*64,'d'*64,True)
+        def passed(command,phase,**kwargs):receipt.write_text(json.dumps(self.installer_proof(candidate,label,verifier)))
+        r.run_installer(checkout,candidate,output,label,SOURCE,VERSION,'d'*64,RECIPE,{},report,passed)
+        self.assertEqual(report['native_installer_receipt']['status'],'passed_bounded_native_deb_checks')
+        packages=r.validate_outputs(candidate,label,SOURCE,VERSION,RECIPE,'e'*64,'d'*64,True)
+        self.assertEqual(len(packages),4);self.assertNotIn(receipt,packages)
+        self.assertEqual(report['installer_verifier']['revision'],RECIPE)
+
     def test_outputs_need_exact_installer_set_hashes_and_original_executable_identity(self):
         directory = self.root / 'packages'; inventory = linux_output(directory)
         result = r.validate_outputs(directory, 'ubuntu-24.04', SOURCE, VERSION, RECIPE, 'e'*64, 'd'*64)
@@ -262,6 +348,8 @@ class NativePackagingTests(unittest.TestCase):
         self.assertIn('actions: read', workflow); self.assertIn('contents: read', workflow)
         self.assertNotIn('secrets.', workflow); self.assertNotIn('cargo ', workflow); self.assertNotIn('cache', workflow)
         self.assertIn('dotnet tool install wix --version 5.0.2 --tool-path', workflow)
+        self.assertIn('cage mesa-vulkan-drivers',workflow)
+        self.assertIn('verify-native-installer-*.json',workflow)
         self.assertNotIn('headspace-native-packages/headspace-*', workflow)
 
 

@@ -264,7 +264,7 @@ def execute(command, phase, cwd=None, env=None, timeout=900):
 
 def safe_diagnostic(text):
     result = {}
-    frames = re.findall(r'File "[^"\n]*[/\\](package-(?:linux|macos|windows)\.py)", line ([0-9]{1,7}), in ([A-Za-z_][A-Za-z_0-9]*)', text)
+    frames = re.findall(r'File "[^"\n]*[/\\]((?:package-(?:linux|macos|windows)|verify-(?:windows-installer|linux-packages))\.py)", line ([0-9]{1,7}), in ([A-Za-z_][A-Za-z_0-9]*)', text)
     if frames:
         file, line, function = frames[-1]
         result = dict(file=file, line=int(line))
@@ -273,6 +273,8 @@ def safe_diagnostic(text):
             'source_bytes', 'revision', 'native_version', 'native_versions', 'icon_bytes', 'wxs',
             'pe_arch', 'payload_manifest', 'audit_tables', 'audit_msi', 'query', 'check',
             'summary_template', 'close', 'identity', 'winget', 'stage', 'sha', 'bounded_json'}
+        allowed |= {'verify', 'execute', 'guard', 'validate_input', 'registration', 'removed', 'preserved',
+                    'preexisting', 'native_machine', 'msiexec', 'tree', 'shortcut_target', 'known_folder'}
         if function in allowed: result['function'] = function
     codes = sorted(set(re.findall(r'\bWIX[0-9]{4}\b', text)))
     if codes: result['wix_codes'] = codes[:8]
@@ -303,9 +305,11 @@ def output_layout(label, version):
     return {stem + '.msi': 'msi', stem + '.winget.yaml': 'winget'}, f'windows-package-inventory-{target}-r1.json', set()
 
 
-def validate_outputs(candidate, label, source, version, recipe_revision, recipe_sha, input_sha):
+def validate_outputs(candidate, label, source, version, recipe_revision, recipe_sha, input_sha, installer_required=False):
     expected, inventory_name, sidecars = output_layout(label, version)
-    require({p.name for p in candidate.iterdir()} == set(expected) | {inventory_name} | sidecars, 'output_closed_set')
+    installer_name = f'verify-native-installer-{TARGETS[label][2]}.json'
+    installer_files = {installer_name} if installer_required and TARGETS[label][0] != 'Darwin' else set()
+    require({p.name for p in candidate.iterdir()} == set(expected) | {inventory_name} | sidecars | installer_files, 'output_closed_set')
     inventory_path = candidate / inventory_name; inventory = document(inventory_path)
     require(inventory.get('schema_version') == 1 and inventory.get('version') == version
         and inventory.get('source_revision') == source and inventory.get('package_revision') == 1
@@ -357,6 +361,86 @@ def validate_outputs(candidate, label, source, version, recipe_revision, recipe_
     return outputs
 
 
+def installer_command(checkout, candidate, label, source, version):
+    system = TARGETS[label][0]; target = TARGETS[label][2]
+    if system == 'Darwin': return None
+    name = 'verify-windows-installer.py' if system == 'Windows' else 'verify-linux-packages.py'
+    verifier = checkout / 'scripts' / name
+    require(not (checkout / 'scripts').is_symlink() and not verifier.is_symlink() and verifier.is_file()
+        and verifier.resolve().is_relative_to(checkout.resolve()) and 0 < verifier.stat().st_size <= 256 * 1024,
+        'native_installer_verifier_missing')
+    _, inventory_name, _ = output_layout(label, version)
+    receipt = candidate / f'verify-native-installer-{target}.json'
+    require(not receipt.exists() and not receipt.is_symlink(), 'native_installer_receipt_preexists')
+    command = [sys.executable, str(verifier), '--inventory', str(candidate / inventory_name),
+        '--target', target, '--source-revision', source, '--report', str(receipt)]
+    if system == 'Windows':
+        expected, _, _ = output_layout(label, version)
+        command.extend(['--msi', str(candidate / next(name for name, fmt in expected.items() if fmt == 'msi')),
+                        '--runner', label])
+    else: command.extend(['--version', version])
+    return command, verifier, receipt
+
+
+def validate_installer_receipt(path, candidate, label, source, version, input_sha, verifier_sha, require_passed=True):
+    target = TARGETS[label][2]; system = TARGETS[label][0]; proof = document(path)
+    require(proof.get('schema_version') == 1 and proof.get('source_revision') == source
+        and proof.get('target') == target and proof.get('runner', label) == label,
+        'native_installer_receipt_identity')
+    if 'verifier_sha256' in proof: require(proof['verifier_sha256'] == verifier_sha, 'native_installer_verifier_hash')
+    if not require_passed:
+        require(proof.get('status') in ('blocked', 'failed', 'passed_native_installer_checks', 'passed_bounded_native_deb_checks'),
+            'native_installer_receipt_status')
+        return proof
+    cli = proof.get('cli', {})
+    require(cli.get('status') == 'passed' and cli.get('version') == 'passed' and cli.get('embedded_notices') == 7
+        and cli.get('mcp', {}).get('status') == 'passed' and cli['mcp'].get('embedded_image_bytes') is True
+        and gui_proof(proof.get('native_gui', {})) and proof.get('installed_executable_sha256') == input_sha,
+        'native_installer_cli_gui_or_installed_bytes')
+    expected, inventory_name, _ = output_layout(label, version)
+    if system == 'Windows':
+        msi = candidate / next(name for name, fmt in expected.items() if fmt == 'msi')
+        inventory = document(candidate / inventory_name)
+        require(proof.get('status') == 'passed_native_installer_checks' and proof.get('format') == 'msi'
+            and proof.get('mode') == 'native_install' and proof.get('package_version') == version
+            and proof.get('msi_sha256') == sha(msi) and proof.get('input_executable_sha256') == input_sha
+            and proof.get('product_code') == inventory.get('product_code')
+            and proof.get('native_version') == inventory.get('native_version')
+            and proof.get('package_recipe_revision') == inventory.get('recipe_revision')
+            and proof.get('same_version_repair') == 'passed'
+            and proof.get('data_preservation') == 'passed_exact_synthetic_bloom_and_marker'
+            and proof.get('removal') == 'passed_payload_product_shortcut_and_registration'
+            and proof.get('owned_cleanup') == 'passed', 'native_windows_installer_outcomes')
+    else:
+        deb = candidate / next(name for name, fmt in expected.items() if fmt == 'deb')
+        require(proof.get('status') == 'passed_bounded_native_deb_checks' and proof.get('version') == version
+            and proof.get('installer') == 'deb' and proof.get('package_sha256') == sha(deb)
+            and proof.get('clean_install') == 'passed' and proof.get('removal') == 'passed'
+            and proof.get('synthetic_working_data_preserved') is True
+            and proof.get('synthetic_bloom_journal_preserved') is True, 'native_linux_installer_outcomes')
+    return proof
+
+
+def run_installer(checkout, candidate, output, label, source, version, input_sha, recipe_revision, env, report,
+                  invoke=execute):
+    plan = installer_command(checkout, candidate, label, source, version)
+    if plan is None: return
+    command, verifier, receipt = plan; verifier_sha = sha(verifier)
+    report['installer_verifier'] = dict(repository=OWNER, revision=recipe_revision,
+        path='scripts/' + verifier.name, sha256=verifier_sha)
+    try:
+        invoke(command, 'native_installer', cwd=checkout, env=env, timeout=600)
+    finally:
+        # Preserve actual bounded failure reports too, while the worker remains
+        # failed. No synthetic "passed" receipt is created if a verifier crashes.
+        if receipt.exists() or receipt.is_symlink():
+            proof = validate_installer_receipt(receipt, candidate, label, source, version, input_sha, verifier_sha, False)
+            shutil.copyfile(receipt, output / receipt.name)
+            report['native_installer_receipt'] = dict(path=receipt.name, bytes=receipt.stat().st_size,
+                sha256=sha(receipt), status=proof['status'])
+    validate_installer_receipt(receipt, candidate, label, source, version, input_sha, verifier_sha)
+
+
 def validate_mac(row, inventory, label, source, input_sha):
     proof = row.get('normalized_code_identity', {}); native = row.get('native_verification', {})
     normalized = proof.get('input_unsigned_sha256', '')
@@ -391,7 +475,8 @@ def main(argv=None):
     report = dict(schema_version=1, owner_repository=OWNER, worker_repository=REPOSITORY,
         runner=args.runner, target=TARGETS[args.runner][2], input_run_id=args.input_run_id,
         source_revision=args.source_revision, version=args.version, recipe_revision=args.recipe_revision,
-        worker_revision=os.environ.get('GITHUB_SHA', ''), cargo_invoked=False, sdk_invoked=False,
+        worker_revision=os.environ.get('GITHUB_SHA', ''), packaging_run_id=int(os.environ.get('GITHUB_RUN_ID', '0')),
+        cargo_invoked=False, sdk_invoked=False,
         status='failed', phase='input_identity')
     require(not args.output.is_symlink() and (not args.output.exists() or not any(args.output.iterdir())), 'output_directory')
     args.output.mkdir(parents=True, exist_ok=True)
@@ -435,6 +520,12 @@ def main(argv=None):
                     'owner_recipe', cwd=checkout, env=env, timeout=900)
             report['phase'] = 'output_audit'
             outputs = validate_outputs(candidate, args.runner, source, version, recipe_revision, recipe_sha, input_sha)
+            report['phase'] = 'native_installer'
+            run_installer(checkout, candidate, args.output, args.runner, source, version, input_sha,
+                recipe_revision, env, report)
+            report['phase'] = 'final_output_audit'
+            outputs = validate_outputs(candidate, args.runner, source, version, recipe_revision, recipe_sha, input_sha,
+                installer_required=True)
             require(validate_input(incoming, args.runner, source, version) == input_sha, 'original_executable_changed')
             for path in outputs: shutil.copyfile(path, args.output / path.name)
             report.update(status='passed', phase='completed', files=[dict(path=p.name, bytes=p.stat().st_size, sha256=sha(p)) for p in outputs],

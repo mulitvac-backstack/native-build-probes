@@ -43,12 +43,12 @@ jobs:
         run: |
           python -m unittest -v test_headspace_native_packaging.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Linux native packaging prerequisites
+      - name: Linux native packaging and installed GUI prerequisites
         if: runner.os == 'Linux'
         shell: bash
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends binutils dpkg-dev rpm cpio desktop-file-utils
+          sudo apt-get install -y --no-install-recommends binutils dpkg-dev rpm cpio desktop-file-utils cage mesa-vulkan-drivers libgl1-mesa-dri libfontconfig1 libwayland-client0 libxkbcommon0 libegl1 libgl1 ffmpeg
       - name: Windows ephemeral pinned MSI compiler
         if: runner.os == 'Windows'
         shell: pwsh
@@ -85,3 +85,4 @@ jobs:
             ${{ runner.temp }}/headspace-native-packages/*-package-inventory*.json
             ${{ runner.temp }}/headspace-native-packages/SHA256SUMS-linux-packages-r1
             ${{ runner.temp }}/headspace-native-packages/build-native-package-*.json
+            ${{ runner.temp }}/headspace-native-packages/verify-native-installer-*.json
