@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "owner_repository": "https://git.multivac.network/backstack.io/headspace",
+  "binary_source_revision": "1e218062387de1b712576e25fdc1bc4d8a0ac395",
+  "binary_version": "0.1.0-alpha.1",
+  "input_run_id": 39164407324,
+  "input_worker_revision": "a25c04c06731a067a27dec5d9317ee67a2325c11",
+  "input_repository": "mulitvac-backstack/native-build-probes",
+  "recipe_path": "scripts/package-macos.py",
+  "recipe_revision": "c0a2186ac99d83e5b3ed1c7352cf67b588995097",
+  "recipe_sha256": "4352a281af7791f984f5188eab90e6b5ee831f403af3662408f37b6bc3d51783",
+  "targets": {
+    "macos-15-intel": {
+      "target": "x86_64-apple-darwin",
+      "artifact_name": "headspace-macos-15-intel-1e218062387de1b712576e25fdc1bc4d8a0ac395",
+      "executable_sha256": "30a6bad2654253a4ea526526c79e2e8d1f5a8ca1eb302e540f335397e076d524"
+    },
+    "macos-15": {
+      "target": "aarch64-apple-darwin",
+      "artifact_name": "headspace-macos-15-1e218062387de1b712576e25fdc1bc4d8a0ac395",
+      "executable_sha256": "39e898c275e3453bd597548f14994fd57ebbdfeccce44d56a86d5cf2655dbebe"
+    }
+  }
+}

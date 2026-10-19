@@ -1,0 +1,40 @@
+name: Headspace Mac DMGs from qualified executables
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  dmg:
+    if: github.event.repository.private == false
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        runner: [macos-15-intel, macos-15]
+    steps:
+      - name: Read pinned packaging adapter
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Offline packaging boundary checks
+        run: python3 -m unittest -v test_headspace_macos_packaging.py
+      - name: Package and verify existing native executable
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEADSPACE_PACKAGE_RUNNER: ${{ matrix.runner }}
+        run: python3 scripts/headspace_macos_packaging.py --runner "$HEADSPACE_PACKAGE_RUNNER" --output "$RUNNER_TEMP/headspace-macos-dmg"
+      - name: Retain only DMG and bounded packaging receipts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: headspace-dmg-${{ matrix.runner }}-1e218062387de1b712576e25fdc1bc4d8a0ac395
+          retention-days: 3
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/headspace-macos-dmg/*.dmg
+            ${{ runner.temp }}/headspace-macos-dmg/macos-package-inventory-*-r1.json
+            ${{ runner.temp }}/headspace-macos-dmg/build-macos-package-*.json
