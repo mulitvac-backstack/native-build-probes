@@ -1,0 +1,87 @@
+name: Headspace native packages from existing executables
+run-name: Headspace packages ${{ inputs.version }} @ ${{ inputs.source_revision }} from ${{ inputs.input_run_id }}
+on:
+  workflow_dispatch:
+    inputs:
+      input_run_id:
+        description: Successful headspace-release.yml run containing all six exact executables
+        required: true
+        type: string
+      source_revision:
+        description: Exact public Gitea application source SHA from that run
+        required: true
+        type: string
+      recipe_revision:
+        description: Exact public Gitea Headspace packaging recipe SHA
+        required: true
+        type: string
+      version:
+        description: Exact application Cargo SemVer, including prerelease
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+jobs:
+  native-packages:
+    if: github.event.repository.private == false
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm, windows-2025, windows-11-arm, macos-15-intel, macos-15]
+    steps:
+      - name: Read public packaging adapter
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Focused packaging boundaries
+        shell: pwsh
+        run: |
+          python -m unittest -v test_headspace_native_packaging.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Linux native packaging prerequisites
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends binutils dpkg-dev rpm cpio desktop-file-utils
+      - name: Windows ephemeral pinned MSI compiler
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          dotnet tool install wix --version 5.0.2 --tool-path "$env:RUNNER_TEMP/headspace-wix"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Package exact qualified executable without rebuilding
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEADSPACE_INPUT_RUN: ${{ inputs.input_run_id }}
+          HEADSPACE_SOURCE_REVISION: ${{ inputs.source_revision }}
+          HEADSPACE_RECIPE_REVISION: ${{ inputs.recipe_revision }}
+          HEADSPACE_PACKAGE_VERSION: ${{ inputs.version }}
+          HEADSPACE_PACKAGE_RUNNER: ${{ matrix.runner }}
+        run: |
+          $packageArgs = @('scripts/headspace_native_packaging.py', '--runner', $env:HEADSPACE_PACKAGE_RUNNER, '--output', "$env:RUNNER_TEMP/headspace-native-packages", '--input-run-id', $env:HEADSPACE_INPUT_RUN, '--source-revision', $env:HEADSPACE_SOURCE_REVISION, '--recipe-revision', $env:HEADSPACE_RECIPE_REVISION, '--version', $env:HEADSPACE_PACKAGE_VERSION)
+          if ($IsWindows) { $packageArgs += @('--wix', "$env:RUNNER_TEMP/headspace-wix/wix.exe") }
+          python @packageArgs
+          exit $LASTEXITCODE
+      - name: Retain only native packages, manifests and bounded receipts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: headspace-native-packages-${{ matrix.runner }}-${{ inputs.source_revision }}
+          retention-days: 3
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/headspace-native-packages/*.deb
+            ${{ runner.temp }}/headspace-native-packages/*.rpm
+            ${{ runner.temp }}/headspace-native-packages/*.dmg
+            ${{ runner.temp }}/headspace-native-packages/*.msi
+            ${{ runner.temp }}/headspace-native-packages/*.winget.yaml
+            ${{ runner.temp }}/headspace-native-packages/*-package-inventory*.json
+            ${{ runner.temp }}/headspace-native-packages/SHA256SUMS-linux-packages-r1
+            ${{ runner.temp }}/headspace-native-packages/build-native-package-*.json
