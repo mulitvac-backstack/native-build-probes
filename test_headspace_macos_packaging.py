@@ -92,7 +92,8 @@ class MacPackagingTests(unittest.TestCase):
         entry=dict(path=dmg.name,format='dmg',bytes=dmg.stat().st_size,sha256=r.sha(dmg),
             input_executable_sha256=self.profile['targets'][label]['executable_sha256'],packaged_executable_sha256='d'*64,
             bundle=dict(files={'Contents/MacOS/headspace':dict(sha256='d'*64)}),normalized_code_sha256='e'*64,
-            normalized_code_identity=dict(status='passed',input_unsigned_sha256='e'*64,packaged_unsigned_sha256='e'*64),
+            normalized_code_identity=dict(status='passed',method='codesign_adhoc_resign_then_remove_signature_private_copies',
+                canonical_identifier='io.backstack.Headspace.normalized',input_unsigned_sha256='e'*64,packaged_unsigned_sha256='e'*64),
             signing=dict(kind='ad_hoc',bundle_seal_verified=True,developer_id=False,notarized=False),native_verification=native)
         inventory=dict(schema_version=1,owner_repository=r.OWNER,source_revision=r.SOURCE,target=target,version=r.VERSION,package_revision=1,
             recipe_revision=self.profile['recipe_revision'],recipe_sha256=self.profile['recipe_sha256'],native_runner=label,

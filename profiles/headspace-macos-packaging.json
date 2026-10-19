@@ -7,8 +7,8 @@
   "input_worker_revision": "a25c04c06731a067a27dec5d9317ee67a2325c11",
   "input_repository": "mulitvac-backstack/native-build-probes",
   "recipe_path": "scripts/package-macos.py",
-  "recipe_revision": "c0a2186ac99d83e5b3ed1c7352cf67b588995097",
-  "recipe_sha256": "4352a281af7791f984f5188eab90e6b5ee831f403af3662408f37b6bc3d51783",
+  "recipe_revision": "d7b21757bdc2f72ee1423a80d135bb56d03137ac",
+  "recipe_sha256": "2ec652384ce6d3059743cd1b699fdcce0e9e9294a894ca5bf5be552974bd0825",
   "targets": {
     "macos-15-intel": {
       "target": "x86_64-apple-darwin",

@@ -199,6 +199,8 @@ def qualified_outputs(directory, profile, label):
             or not re.fullmatch('[0-9a-f]{64}', packaged_sha)
             or entry.get('bundle', {}).get('files', {}).get('Contents/MacOS/headspace', {}).get('sha256') != packaged_sha
             or identity.get('status') != 'passed'
+            or identity.get('method') != 'codesign_adhoc_resign_then_remove_signature_private_copies'
+            or identity.get('canonical_identifier') != 'io.backstack.Headspace.normalized'
             or not re.fullmatch('[0-9a-f]{64}', identity.get('input_unsigned_sha256', ''))
             or identity.get('input_unsigned_sha256') != identity.get('packaged_unsigned_sha256')
             or entry.get('normalized_code_sha256') != identity.get('input_unsigned_sha256')
