@@ -31,6 +31,10 @@ MAX_ARCHIVE = 512 * 1024 * 1024
 MAX_BINARY = 512 * 1024 * 1024
 MAX_RECEIPT = 131072
 MAX_OUTPUT = 1024 * 1024 * 1024
+PLATFORMS = {'all': tuple(TARGETS),
+    'windows': ('windows-2025', 'windows-11-arm'),
+    'macos': ('macos-15-intel', 'macos-15'),
+    'linux': ('ubuntu-24.04', 'ubuntu-24.04-arm')}
 
 
 def require(condition, code):
@@ -40,6 +44,10 @@ def require(condition, code):
 def revision(value):
     require(isinstance(value, str) and re.fullmatch('[0-9a-f]{40}', value) is not None, 'invalid_revision')
     return value
+
+
+def platform_runner(platform, label):
+    require(platform in PLATFORMS and label in PLATFORMS[platform], 'fixed_platform_runner')
 
 
 def semver(value):
@@ -469,11 +477,12 @@ def validate_mac(row, inventory, label, source, input_sha):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--runner', required=True, choices=TARGETS); parser.add_argument('--output', required=True, type=Path)
+    parser.add_argument('--platform', choices=PLATFORMS, default='all')
     parser.add_argument('--input-run-id', required=True, type=int); parser.add_argument('--source-revision', required=True)
     parser.add_argument('--recipe-revision', required=True); parser.add_argument('--version', required=True)
     parser.add_argument('--wix', type=Path); args = parser.parse_args(argv)
     report = dict(schema_version=1, owner_repository=OWNER, worker_repository=REPOSITORY,
-        runner=args.runner, target=TARGETS[args.runner][2], input_run_id=args.input_run_id,
+        runner=args.runner, target=TARGETS[args.runner][2], input_run_id=args.input_run_id, package_platform=args.platform,
         source_revision=args.source_revision, version=args.version, recipe_revision=args.recipe_revision,
         worker_revision=os.environ.get('GITHUB_SHA', ''), packaging_run_id=int(os.environ.get('GITHUB_RUN_ID', '0')),
         cargo_invoked=False, sdk_invoked=False,
@@ -482,6 +491,7 @@ def main(argv=None):
     args.output.mkdir(parents=True, exist_ok=True)
     try:
         source = revision(args.source_revision); recipe_revision = revision(args.recipe_revision); version = semver(args.version)
+        platform_runner(args.platform, args.runner)
         require(0 < args.input_run_id < 10**14 and os.environ.get('GITHUB_ACTIONS') == 'true'
             and os.environ.get('RUNNER_ENVIRONMENT') == 'github-hosted'
             and os.environ.get('GITHUB_REPOSITORY') == REPOSITORY, 'native_hosted_repository')

@@ -1,5 +1,5 @@
 name: Headspace native packages from existing executables
-run-name: Headspace packages ${{ inputs.version }} @ ${{ inputs.source_revision }} from ${{ inputs.input_run_id }}
+run-name: Headspace packages ${{ inputs.version }} @ ${{ inputs.source_revision }} from ${{ inputs.input_run_id }} [${{ inputs.platform }}]
 on:
   workflow_dispatch:
     inputs:
@@ -19,6 +19,12 @@ on:
         description: Exact application Cargo SemVer, including prerelease
         required: true
         type: string
+      platform:
+        description: Fixed native platform set to package; reuses the same qualified six-executable cohort
+        required: true
+        type: choice
+        default: all
+        options: [all, windows, macos, linux]
 permissions:
   contents: read
   actions: read
@@ -31,7 +37,7 @@ jobs:
       fail-fast: false
       max-parallel: 6
       matrix:
-        runner: [ubuntu-24.04, ubuntu-24.04-arm, windows-2025, windows-11-arm, macos-15-intel, macos-15]
+        runner: ${{ fromJSON(inputs.platform == 'windows' && '["windows-2025","windows-11-arm"]' || inputs.platform == 'macos' && '["macos-15-intel","macos-15"]' || inputs.platform == 'linux' && '["ubuntu-24.04","ubuntu-24.04-arm"]' || '["ubuntu-24.04","ubuntu-24.04-arm","windows-2025","windows-11-arm","macos-15-intel","macos-15"]') }}
     steps:
       - name: Read public packaging adapter
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -64,8 +70,9 @@ jobs:
           HEADSPACE_RECIPE_REVISION: ${{ inputs.recipe_revision }}
           HEADSPACE_PACKAGE_VERSION: ${{ inputs.version }}
           HEADSPACE_PACKAGE_RUNNER: ${{ matrix.runner }}
+          HEADSPACE_PACKAGE_PLATFORM: ${{ inputs.platform }}
         run: |
-          $packageArgs = @('scripts/headspace_native_packaging.py', '--runner', $env:HEADSPACE_PACKAGE_RUNNER, '--output', "$env:RUNNER_TEMP/headspace-native-packages", '--input-run-id', $env:HEADSPACE_INPUT_RUN, '--source-revision', $env:HEADSPACE_SOURCE_REVISION, '--recipe-revision', $env:HEADSPACE_RECIPE_REVISION, '--version', $env:HEADSPACE_PACKAGE_VERSION)
+          $packageArgs = @('scripts/headspace_native_packaging.py', '--runner', $env:HEADSPACE_PACKAGE_RUNNER, '--platform', $env:HEADSPACE_PACKAGE_PLATFORM, '--output', "$env:RUNNER_TEMP/headspace-native-packages", '--input-run-id', $env:HEADSPACE_INPUT_RUN, '--source-revision', $env:HEADSPACE_SOURCE_REVISION, '--recipe-revision', $env:HEADSPACE_RECIPE_REVISION, '--version', $env:HEADSPACE_PACKAGE_VERSION)
           if ($IsWindows) { $packageArgs += @('--wix', "$env:RUNNER_TEMP/headspace-wix/wix.exe") }
           python @packageArgs
           exit $LASTEXITCODE

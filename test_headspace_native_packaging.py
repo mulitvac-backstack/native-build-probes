@@ -102,6 +102,18 @@ class NativePackagingTests(unittest.TestCase):
                        lambda d: d['artifacts'][0].update(id=d['artifacts'][1]['id'])]:
             doc = artifacts(); mutate(doc); self.assertRaises(r.BuildFailure, r.artifact_set, doc, RUN, SOURCE, WORKER)
 
+    def test_selective_platforms_only_admit_fixed_native_pairs_and_keep_full_input_cohort(self):
+        self.assertEqual(set(r.PLATFORMS),{'all','windows','macos','linux'})
+        self.assertEqual(set(r.PLATFORMS['all']),set(r.TARGETS))
+        self.assertEqual(r.PLATFORMS['windows'],('windows-2025','windows-11-arm'))
+        for platform in ('windows','macos','linux'):
+            self.assertEqual(len(r.PLATFORMS[platform]),2)
+            for label in r.PLATFORMS[platform]:r.platform_runner(platform,label)
+        self.assertRaises(r.BuildFailure,r.platform_runner,'windows','ubuntu-24.04')
+        self.assertRaises(r.BuildFailure,r.platform_runner,'custom','windows-2025')
+        selected=artifacts();selected['artifacts']=[row for row in selected['artifacts'] if 'windows' in row['name']];selected['total_count']=2
+        self.assertRaises(r.BuildFailure,r.artifact_set,selected,RUN,SOURCE,WORKER)
+
     def test_blob_redirect_only_accepts_expected_https_hosts_without_credentials(self):
         r.validate_blob_url('https://production.blob.core.windows.net/a?sig=opaque')
         r.validate_blob_url('https://results.actions.githubusercontent.com/a')
@@ -350,6 +362,8 @@ class NativePackagingTests(unittest.TestCase):
         self.assertIn('dotnet tool install wix --version 5.0.2 --tool-path', workflow)
         self.assertIn('cage mesa-vulkan-drivers',workflow)
         self.assertIn('verify-native-installer-*.json',workflow)
+        self.assertIn('options: [all, windows, macos, linux]',workflow)
+        self.assertIn('fromJSON(inputs.platform',workflow)
         self.assertNotIn('headspace-native-packages/headspace-*', workflow)
 
 
