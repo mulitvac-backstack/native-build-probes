@@ -7,13 +7,15 @@ import os
 from pathlib import Path
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
+import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import probe
-from headspace_source_build import BuildFailure, fetch_source, run
+from headspace_source_build import BuildFailure, fetch_source, run, stop_child
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = '1e218062387de1b712576e25fdc1bc4d8a0ac395'
@@ -23,6 +25,48 @@ REPOSITORY = 'mulitvac-backstack/native-build-probes'
 OWNER = 'https://git.multivac.network/backstack.io/headspace'
 VERSION = '0.1.0-alpha.1'
 TARGETS = {'macos-15-intel': 'x86_64-apple-darwin', 'macos-15': 'aarch64-apple-darwin'}
+
+
+def safe_recipe_diagnostic(output):
+    """Expose fixed source coordinates/error codes, never arbitrary messages."""
+    result = {}
+    frames = re.findall(r'File "[^"\n]*/scripts/package-macos\.py", line ([0-9]{1,7}), in ([a-z_]+)', output)
+    allowed = {'main','run','macho','copy','manifest','seal_app','unsigned_sha','check_dmg','qualified_input','verifier'}
+    for line, function in frames:
+        if function in allowed:
+            result.update(file='package-macos.py',line=int(line),function=function)
+    tool = re.search(r'RuntimeError: (iconutil|plutil|otool|codesign|hdiutil|ditto|headspace) exited (-?[0-9]{1,10})(?:\n|$)', output)
+    if tool:
+        result.update(code='native_tool_failed',tool=tool[1],exit_code=int(tool[2]))
+    known = {'Unsigned executable identity changed during bundle sealing':'normalized_code_mismatch',
+             'Unbundled dynamic dependency':'unbundled_dynamic_dependency',
+             'Signature removal failed':'signature_removal_failed',
+             'Invalid signature bounds':'invalid_signature_bounds',
+             'Installed application payload changed':'installed_payload_changed',
+             'Mounted application payload changed':'mounted_payload_changed',
+             'Expected owned read-only mount':'read_only_mount_missing',
+             'Native GUI/recovery qualification failed':'native_gui_recovery_failed'}
+    for message, code in known.items():
+        if '\nRuntimeError: '+message+'\n' in '\n'+output+'\n' or '\nBlocked: '+message+'\n' in '\n'+output+'\n':
+            result['code'] = code
+    return result
+
+
+def run_recipe(command, source, env, timeout=600):
+    with tempfile.TemporaryFile() as output:
+        child = subprocess.Popen(command,cwd=source,env=env,stdout=output,stderr=output,
+                                 shell=False,start_new_session=True)
+        deadline = time.monotonic()+timeout
+        while child.poll() is None:
+            if time.monotonic()>deadline or os.fstat(output.fileno()).st_size>16*1024*1024:
+                stop_child(child)
+                raise BuildFailure('recipe_bound','Owner recipe exceeded time/output bounds')
+            time.sleep(0.1)
+        if child.returncode:
+            size=os.fstat(output.fileno()).st_size;output.seek(max(0,size-65536))
+            error=BuildFailure('native_dmg_package_and_verification_failed','Owner recipe failed')
+            error.recipe_diagnostic=safe_recipe_diagnostic(output.read(65536).decode(errors='replace'))
+            raise error
 
 
 def sha(path):
@@ -177,7 +221,10 @@ def main(argv=None):
     profile = load_profile(ROOT / 'profiles/headspace-macos-packaging.json')
     label = args.runner
     report = dict(schema_version=1, source_revision=SOURCE, version=VERSION,
-                  recipe_revision=profile['recipe_revision'], target=TARGETS[label], runner=label,
+                  recipe_revision=profile['recipe_revision'], recipe_sha256=profile['recipe_sha256'],
+                  worker_repository=REPOSITORY, worker_revision=os.environ.get('GITHUB_SHA',''),
+                  packaging_run_id=int(os.environ.get('GITHUB_RUN_ID','0')),
+                  target=TARGETS[label], runner=label,
                   input_run_id=RUN, cargo_invoked=False, sdk_invoked=False, status='failed', phase='native_identity')
     args.output.mkdir(parents=True, exist_ok=True)
     try:
@@ -209,9 +256,9 @@ def main(argv=None):
                 raise BuildFailure('recipe_identity', 'Owner recipe hash differs')
             candidate = work / 'candidate'
             report['phase'] = 'package_and_verify'
-            run([sys.executable, str(recipe), '--artifacts', str(incoming), '--output', str(candidate),
+            run_recipe([sys.executable, str(recipe), '--artifacts', str(incoming), '--output', str(candidate),
                  '--recipe-revision', profile['recipe_revision'], '--target', TARGETS[label]],
-                'native_dmg_package_and_verification', cwd=source, env=env, timeout=600)
+                source, env)
             report['phase'] = 'output_audit'
             inventory, outputs = qualified_outputs(candidate, profile, label)
             for path in outputs:
@@ -222,6 +269,8 @@ def main(argv=None):
         report['blocker'] = 'Native packaging or bounded qualification failed; no raw logs or executables forwarded'
         if isinstance(error, BuildFailure):
             report['failure_code'] = error.code
+            if hasattr(error,'recipe_diagnostic'):
+                report['owner_recipe_diagnostic'] = error.recipe_diagnostic
     path = args.output / f'build-macos-package-{TARGETS[label]}.json'
     path.write_text(json.dumps(report, indent=2) + '\n')
     print(json.dumps(dict(status=report['status'], target=report['target'], phase=report['phase'])))

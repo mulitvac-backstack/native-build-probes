@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+import sys
 
 ROOT = Path(__file__).resolve().parent
 SPEC = importlib.util.spec_from_file_location('mac_packaging', ROOT/'scripts/headspace_macos_packaging.py')
@@ -70,6 +71,17 @@ class MacPackagingTests(unittest.TestCase):
     def test_owner_recipe_cannot_inherit_download_or_provider_credentials(self):
         original=dict(PATH='/bin',GH_TOKEN='private',GITHUB_TOKEN='private',ACTIONS_RUNTIME_TOKEN='private',BLOOM_ARTIFACT_KEY='private',OPENAI_API_KEY='private',AWS_SECRET_ACCESS_KEY='private')
         self.assertEqual(r.recipe_environment(original),dict(PATH='/bin'))
+
+    def test_failed_recipe_reports_only_allowlisted_tool_and_source_location(self):
+        private='PRIVATE_SECRET_PATH_AND_MESSAGE'
+        body=f'File "/{private}/scripts/package-macos.py", line 166, in seal_app\nRuntimeError: codesign exited 1\n{private}\n'
+        self.assertEqual(r.safe_recipe_diagnostic(body),dict(file='package-macos.py',line=166,function='seal_app',code='native_tool_failed',tool='codesign',exit_code=1))
+        self.assertNotIn(private,json.dumps(r.safe_recipe_diagnostic(body)))
+        script='import sys;sys.stderr.write('+repr(body)+');sys.exit(1)'
+        with self.assertRaises(r.BuildFailure)as caught:
+            r.run_recipe([sys.executable,'-c',script],self.root,{})
+        self.assertEqual(caught.exception.recipe_diagnostic['tool'],'codesign')
+        self.assertNotIn(private,str(caught.exception))
 
     def test_output_allows_only_one_hashed_dmg_and_bounded_inventory(self):
         label='macos-15';target=r.TARGETS[label];candidate=self.root/'out';candidate.mkdir()
