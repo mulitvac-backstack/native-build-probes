@@ -183,11 +183,11 @@ class NativePackagingTests(unittest.TestCase):
     def test_alpha4_raw_input_requires_live_mcp_without_breaking_historical_receipts(self):
         live=dict(status='passed',mode='stdio_no_project',initialize=True,tools_discovered=True,live_bloom_workspace=True,unsaved_text=True,
             current_selection=True,original_png_bytes=True,snapshot_guarded=True,loopback_connections=1,external_network_requests=0)
-        for version in ('0.1.0-alpha.2','0.1.0-alpha.3','0.1.0-alpha.4'):
+        for version in ('0.1.0-alpha.1','0.1.0-alpha.2','0.1.0-alpha.3','0.1.0-alpha.4','0.1.0-alpha.5','0.2.0'):
             label='windows-11-arm';target=r.TARGETS[label][2]
             binary,digest=input_fixture(self.root/version,label,version)
             path=binary.parent/f'verify-native-{target}-binary.json';doc=json.loads(path.read_text())
-            if version != '0.1.0-alpha.4':
+            if version in ('0.1.0-alpha.1','0.1.0-alpha.2','0.1.0-alpha.3'):
                 self.assertEqual(r.validate_input(binary.parent,label,SOURCE,version),digest)
                 continue
             self.assertRaises(r.BuildFailure,r.validate_input,binary.parent,label,SOURCE,version)

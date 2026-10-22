@@ -210,9 +210,14 @@ def binary_arch(path, target):
     require(valid, 'input_binary_architecture')
 
 
+def requires_live_mcp(version):
+    # Known published legacy schemas are the entire exemption list.
+    return version not in ('0.1.0-alpha.1', '0.1.0-alpha.2', '0.1.0-alpha.3')
+
+
 def gui_proof(gui, version):
     engine = gui.get('native_engine', {})
-    if version == '0.1.0-alpha.4':
+    if requires_live_mcp(version):
         live = gui.get('live_mcp', {})
         if not (isinstance(live, dict) and live.get('status') == 'passed' and live.get('mode') == 'stdio_no_project'
                 and type(live.get('loopback_connections')) is int and live['loopback_connections'] == 1

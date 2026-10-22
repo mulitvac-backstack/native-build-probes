@@ -40,8 +40,12 @@ class ReleaseTests(unittest.TestCase):
     def test_alpha4_native_admission_requires_no_project_live_mcp_receipt(self):
         live=dict(status='passed',mode='stdio_no_project',initialize=True,tools_discovered=True,live_bloom_workspace=True,unsaved_text=True,
             current_selection=True,original_png_bytes=True,snapshot_guarded=True,loopback_connections=1,external_network_requests=0)
-        for historical in ('0.1.0-alpha.2','0.1.0-alpha.3'):
+        for historical in ('0.1.0-alpha.1','0.1.0-alpha.2','0.1.0-alpha.3'):
             self.assertTrue(r.live_mcp_proof({},historical))
+        for version in ('0.1.0-alpha.4','0.1.0-alpha.5','0.2.0'):
+            self.assertTrue(r.requires_live_mcp(version))
+            self.assertFalse(r.live_mcp_proof({},version))
+            self.assertTrue(r.live_mcp_proof(dict(live_mcp=live,external_network_requests=0),version))
         self.assertFalse(r.live_mcp_proof({},'0.1.0-alpha.4'))
         self.assertTrue(r.live_mcp_proof(dict(live_mcp=live,external_network_requests=0),'0.1.0-alpha.4'))
         for key,value in [('status','blocked'),('mode','saved_project'),('initialize',1),('unsaved_text',False),

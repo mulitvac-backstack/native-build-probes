@@ -341,8 +341,13 @@ def pinned_sdk_sha(source, configured):
     return expected
 
 
+def requires_live_mcp(version):
+    # Only immutable pre-live-proof releases keep their original receipt schema.
+    return version not in ('0.1.0-alpha.1', '0.1.0-alpha.2', '0.1.0-alpha.3')
+
+
 def live_mcp_proof(gui, version):
-    if version != '0.1.0-alpha.4': return True
+    if not requires_live_mcp(version): return True
     live = gui.get('live_mcp', {})
     return (isinstance(live, dict) and live.get('status') == 'passed' and live.get('mode') == 'stdio_no_project'
         and type(live.get('loopback_connections')) is int and live['loopback_connections'] == 1
@@ -467,7 +472,7 @@ def build(args):
                 expected_status={'passed_artifact_audit'} if mode=='audit' else {'passed_bounded_native_checks','passed_cli_checks_gui_unqualified'}
                 if proof.get('status')not in expected_status or proof.get('cli',{}).get('status')!='passed':
                     raise BuildFailure('verification_failed','Native CLI/MCP checks must pass')
-                if mode == 'native' and version == '0.1.0-alpha.4':
+                if mode == 'native' and requires_live_mcp(version):
                     if proof.get('status') != 'passed_bounded_native_checks' or not live_mcp_proof(proof.get('native_gui', {}), version):
                         raise BuildFailure('verification_live_mcp', 'Native GUI must prove no-project live MCP context, selection and embedded bytes')
                 reports[mode]=proof.get('status')
