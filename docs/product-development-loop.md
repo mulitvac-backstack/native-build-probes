@@ -120,3 +120,19 @@ source or credentials. It checks AppKit pasteboard fixtures and synthetic drag
 callbacks; physical Safari/Chrome and app integration remain separate pending
 acceptance. Only its bounded JSON receipt is retained. Value and existing journey
 design are unchanged; this resolves API feasibility before the next app matrix.
+
+## 2026-10-22: published Windows live MCP diagnostic
+
+Value: establish why the running Windows GUI's no-file MCP attachment reports
+`live_workspace_unavailable`, which saved-file release checks did not cover.
+Feasibility/design: diagnostic-only manual lane uses exact alpha.3 public owner
+bytes hash-pinned by the committed publication contract and original successful
+application run39318900665, with native Windows x64 and ARM64 runner identity.
+No application, Bloom SDK or installer is compiled. The source-owned disposable
+fixture isolates profile/appdata/Bloom/account state, starts its own GUI, inspects
+endpoint ACL structure without emitting SID/capability/path, then attempts real
+stdio initialize, tools/list and live get_board_context without a `.space` path.
+Only its own processes are stopped. Public evidence is bounded metadata and safe
+MCP stderr; no user workspace, clipboard, input injection or credentials.
+Implementation: `scripts/headspace_windows_live_mcp.py` and diagnostic workflow.
+Native outcome is pending actual run; success is not inferred from fixture code.

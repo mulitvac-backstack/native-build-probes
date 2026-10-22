@@ -1,0 +1,42 @@
+name: Headspace existing Windows live MCP diagnostic
+run-name: Headspace alpha.3 Windows live MCP diagnostic @ ${{ inputs.qa_revision }}
+on:
+  workflow_dispatch:
+    inputs:
+      qa_revision:
+        description: Exact public Gitea Headspace QA source SHA; published executable remains pinned alpha.3
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  windows-live-mcp:
+    if: github.event.repository.private == false
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [windows-2025, windows-11-arm]
+    steps:
+      - name: Read trusted public diagnostic adapter
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Actual GUI and no-file MCP attachment using published executable
+        shell: pwsh
+        env:
+          HEADSPACE_QA_REVISION: ${{ inputs.qa_revision }}
+          HEADSPACE_DIAGNOSTIC_RUNNER: ${{ matrix.runner }}
+        run: |
+          python scripts/headspace_windows_live_mcp.py --runner $env:HEADSPACE_DIAGNOSTIC_RUNNER "--qa-revision=$env:HEADSPACE_QA_REVISION" --output "$env:RUNNER_TEMP/headspace-windows-live-mcp"
+          exit $LASTEXITCODE
+      - name: Retain bounded capability-free native diagnostic receipt
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: headspace-windows-live-mcp-${{ matrix.runner }}-${{ inputs.qa_revision }}
+          retention-days: 3
+          if-no-files-found: warn
+          path: ${{ runner.temp }}/headspace-windows-live-mcp/*.json
