@@ -210,8 +210,18 @@ def binary_arch(path, target):
     require(valid, 'input_binary_architecture')
 
 
-def gui_proof(gui):
+def gui_proof(gui, version):
     engine = gui.get('native_engine', {})
+    if version == '0.1.0-alpha.4':
+        live = gui.get('live_mcp', {})
+        if not (isinstance(live, dict) and live.get('status') == 'passed' and live.get('mode') == 'stdio_no_project'
+                and type(live.get('loopback_connections')) is int and live['loopback_connections'] == 1
+                and type(live.get('external_network_requests')) is int and live['external_network_requests'] == 0
+                and type(gui.get('external_network_requests')) is int and gui['external_network_requests'] == 0
+                and all(live.get(key) is True for key in
+                    ('initialize', 'tools_discovered', 'live_bloom_workspace', 'unsaved_text',
+                     'current_selection', 'original_png_bytes', 'snapshot_guarded'))):
+            return False
     return (gui.get('status') == 'passed' and gui.get('working_recovery') is True
         and gui.get('portable_roundtrip') is True and engine.get('enabled') is True
         and all(type(engine.get(key, {}).get('count')) is int and engine[key]['count'] >= 3
@@ -242,7 +252,7 @@ def validate_input(directory, label, source, version):
             and cli.get('mcp', {}).get('status') == 'passed' and cli['mcp'].get('embedded_image_bytes') is True,
             'input_qualification')
         require(proof.get('status') == ('passed_bounded_native_checks' if mode == 'native' else 'passed_artifact_audit'), 'input_qualification_status')
-        if mode == 'native': require(gui_proof(proof.get('native_gui', {})), 'input_native_gui')
+        if mode == 'native': require(gui_proof(proof.get('native_gui', {}), version), 'input_native_gui')
     binary.chmod(0o755)
     return digest
 
@@ -403,7 +413,7 @@ def validate_installer_receipt(path, candidate, label, source, version, input_sh
     cli = proof.get('cli', {})
     require(cli.get('status') == 'passed' and cli.get('version') == 'passed' and cli.get('embedded_notices') == 7
         and cli.get('mcp', {}).get('status') == 'passed' and cli['mcp'].get('embedded_image_bytes') is True
-        and gui_proof(proof.get('native_gui', {})) and proof.get('installed_executable_sha256') == input_sha,
+        and gui_proof(proof.get('native_gui', {}), version) and proof.get('installed_executable_sha256') == input_sha,
         'native_installer_cli_gui_or_installed_bytes')
     expected, inventory_name, _ = output_layout(label, version)
     if system == 'Windows':
@@ -471,7 +481,7 @@ def validate_mac(row, inventory, label, source, input_sha):
         and native['mcp'].get('embedded_image_bytes') is True and gui.get('source_revision') == source
         and gui.get('target') == TARGETS[label][2] and gui.get('runner') == label
         and gui.get('status') == 'passed_bounded_native_checks'
-        and gui_proof(gui.get('native_gui', {})), 'output_mac_native_proof')
+        and gui_proof(gui.get('native_gui', {}), inventory.get('version')), 'output_mac_native_proof')
 
 
 def main(argv=None):

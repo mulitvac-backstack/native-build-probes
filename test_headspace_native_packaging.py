@@ -43,12 +43,12 @@ def header(target):
     return data
 
 
-def input_fixture(directory, label):
+def input_fixture(directory, label, version=VERSION):
     directory.mkdir(); target = r.TARGETS[label][2]
-    name = next(n for n in r.input_names(target, VERSION) if n.startswith('headspace-'))
+    name = next(n for n in r.input_names(target, version) if n.startswith('headspace-'))
     binary = directory / name; binary.write_bytes(header(target)); digest = r.sha(binary)
     (directory / f'inventory-{target}.json').write_text(json.dumps(dict(schema_version=2,
-        source_revision=SOURCE, version=VERSION, target=target, release_tag='v' + VERSION,
+        source_revision=SOURCE, version=version, target=target, release_tag='v' + version,
         delivery='single_native_executable', private_user_data_included=False,
         files=[dict(path=name, format='binary', bytes=binary.stat().st_size, sha256=digest)])))
     (directory / f'build-{target}.json').write_text(json.dumps(dict(source_revision=SOURCE, target=target,
@@ -64,15 +64,15 @@ def input_fixture(directory, label):
     return binary, digest
 
 
-def linux_output(directory, label='ubuntu-24.04'):
-    directory.mkdir(); expected, name, _ = r.output_layout(label, VERSION); target = r.TARGETS[label][2]
+def linux_output(directory, label='ubuntu-24.04', version=VERSION):
+    directory.mkdir(); expected, name, _ = r.output_layout(label, version); target = r.TARGETS[label][2]
     rows = []
     for file, fmt in expected.items():
         path = directory / file; path.write_bytes(b'package fixture ' + fmt.encode())
         rows.append(dict(path=file, format=fmt, bytes=path.stat().st_size, sha256=r.sha(path),
             target=target, source_revision=SOURCE, executable_sha256='d'*64,
             payload_audit=dict(status='passed', executable_sha256='d'*64, executable_files=['usr/bin/headspace'], symlinks=0)))
-    doc = dict(schema_version=1, owner_repository=r.OWNER, source_revision=SOURCE, version=VERSION,
+    doc = dict(schema_version=1, owner_repository=r.OWNER, source_revision=SOURCE, version=version,
         recipe_revision=RECIPE, recipe_sha256='e'*64, package_revision=1, files=rows)
     (directory / name).write_text(json.dumps(doc))
     paths = sorted(p for p in directory.iterdir())
@@ -180,6 +180,25 @@ class NativePackagingTests(unittest.TestCase):
         doc['native_gui']['portable_roundtrip'] = False; path.write_text(json.dumps(doc))
         self.assertRaises(r.BuildFailure, r.validate_input, binary.parent, label, SOURCE, VERSION)
 
+    def test_alpha4_raw_input_requires_live_mcp_without_breaking_historical_receipts(self):
+        live=dict(status='passed',mode='stdio_no_project',initialize=True,tools_discovered=True,live_bloom_workspace=True,unsaved_text=True,
+            current_selection=True,original_png_bytes=True,snapshot_guarded=True,loopback_connections=1,external_network_requests=0)
+        for version in ('0.1.0-alpha.2','0.1.0-alpha.3','0.1.0-alpha.4'):
+            label='windows-11-arm';target=r.TARGETS[label][2]
+            binary,digest=input_fixture(self.root/version,label,version)
+            path=binary.parent/f'verify-native-{target}-binary.json';doc=json.loads(path.read_text())
+            if version != '0.1.0-alpha.4':
+                self.assertEqual(r.validate_input(binary.parent,label,SOURCE,version),digest)
+                continue
+            self.assertRaises(r.BuildFailure,r.validate_input,binary.parent,label,SOURCE,version)
+            doc['native_gui'].update(live_mcp=live,external_network_requests=0);path.write_text(json.dumps(doc))
+            self.assertEqual(r.validate_input(binary.parent,label,SOURCE,version),digest)
+            for key,value in [('status','blocked'),('mode','saved_project'),('initialize',1),('unsaved_text',False),
+                              ('current_selection',None),('original_png_bytes',False),('tools_discovered',False),
+                              ('live_bloom_workspace',False),('snapshot_guarded',False),('loopback_connections',True),('external_network_requests',False)]:
+                bad=copy.deepcopy(doc);bad['native_gui']['live_mcp'][key]=value;path.write_text(json.dumps(bad))
+                self.assertRaises(r.BuildFailure,r.validate_input,binary.parent,label,SOURCE,version)
+
     def test_recipe_environment_removes_tokens_git_overrides_and_provider_secrets(self):
         env = r.recipe_environment(dict(PATH='/tools', RUNNER_TEMP='/owned', GH_TOKEN='secret', GITHUB_TOKEN='secret',
             BLOOM_ARTIFACT_KEY='secret', OPENAI_API_KEY='secret', AWS_SECRET_ACCESS_KEY='secret',
@@ -197,32 +216,32 @@ class NativePackagingTests(unittest.TestCase):
             self.assertIn(SOURCE, command); self.assertIn(RECIPE, command)
         self.assertRaises(r.BuildFailure, r.recipe_command, 'recipe.py', 'input', 'output', 'windows-2025', SOURCE, VERSION, RECIPE)
 
-    def installer_fixture(self, label='ubuntu-24.04'):
+    def installer_fixture(self, label='ubuntu-24.04', version=VERSION):
         checkout=self.root/'owner';(checkout/'scripts').mkdir(parents=True)
         name='verify-windows-installer.py' if r.TARGETS[label][0]=='Windows' else 'verify-linux-packages.py'
         verifier=checkout/'scripts'/name;verifier.write_text('# source-owned fixture\n')
         candidate=self.root/'candidate'
-        if r.TARGETS[label][0]=='Linux':linux_output(candidate,label)
+        if r.TARGETS[label][0]=='Linux':linux_output(candidate,label,version)
         else:
-            candidate.mkdir();expected,inventory_name,_=r.output_layout(label,VERSION)
+            candidate.mkdir();expected,inventory_name,_=r.output_layout(label,version)
             for name in expected:(candidate/name).write_bytes(b'controlled fixture')
             (candidate/inventory_name).write_text(json.dumps(dict(product_code='{PRODUCT}',native_version='1.0.2',recipe_revision=RECIPE)))
         output=self.root/'retained';output.mkdir()
-        plan=r.installer_command(checkout,candidate,label,SOURCE,VERSION)
+        plan=r.installer_command(checkout,candidate,label,SOURCE,version)
         return checkout,candidate,output,verifier,plan[2]
 
-    def installer_proof(self,candidate,label,verifier):
-        expected,inventory_name,_=r.output_layout(label,VERSION);system=r.TARGETS[label][0];target=r.TARGETS[label][2]
+    def installer_proof(self,candidate,label,verifier,version=VERSION):
+        expected,inventory_name,_=r.output_layout(label,version);system=r.TARGETS[label][0];target=r.TARGETS[label][2]
         proof=dict(schema_version=1,source_revision=SOURCE,target=target,runner=label,verifier_sha256=r.sha(verifier),
             installed_executable_sha256='d'*64,cli=dict(status='passed',version='passed',embedded_notices=7,mcp=dict(status='passed',embedded_image_bytes=True)),
             native_gui=dict(status='passed',working_recovery=True,portable_roundtrip=True,native_engine=dict(enabled=True,draw_total_ms=dict(count=3),platform_submit_ms=dict(count=3))))
         if system=='Linux':
             deb=candidate/next(name for name,fmt in expected.items() if fmt=='deb')
-            proof.update(status='passed_bounded_native_deb_checks',version=VERSION,installer='deb',package_sha256=r.sha(deb),clean_install='passed',removal='passed',
+            proof.update(status='passed_bounded_native_deb_checks',version=version,installer='deb',package_sha256=r.sha(deb),clean_install='passed',removal='passed',
                 synthetic_working_data_preserved=True,synthetic_bloom_journal_preserved=True,rpm_native_install='unverified_requires_native_rpm_userspace')
         else:
             msi=candidate/next(name for name,fmt in expected.items() if fmt=='msi')
-            proof.update(status='passed_native_installer_checks',format='msi',mode='native_install',package_version=VERSION,
+            proof.update(status='passed_native_installer_checks',format='msi',mode='native_install',package_version=version,
                 msi_sha256=r.sha(msi),input_executable_sha256='d'*64,product_code='{PRODUCT}',native_version='1.0.2',package_recipe_revision=RECIPE,
                 same_version_repair='passed',data_preservation='passed_exact_synthetic_bloom_and_marker',
                 removal='passed_payload_product_shortcut_and_registration',owned_cleanup='passed',cross_version_upgrade='unverified_no_predecessor_msi')
@@ -260,6 +279,22 @@ class NativePackagingTests(unittest.TestCase):
                                    lambda d:d.update(verifier_sha256='f'*64)]:
                         changed=copy.deepcopy(proof);mutate(changed);receipt.write_text(json.dumps(changed))
                         self.assertRaises(r.BuildFailure,r.validate_installer_receipt,receipt,candidate,label,SOURCE,VERSION,'d'*64,r.sha(verifier))
+                finally:self.root=original
+
+    def test_alpha4_installed_gui_requires_live_attachment_for_both_installer_families(self):
+        version='0.1.0-alpha.4'
+        for label in ('ubuntu-24.04-arm','windows-11-arm'):
+            with tempfile.TemporaryDirectory() as temporary:
+                original=self.root;self.root=Path(temporary)
+                try:
+                    _,candidate,_,verifier,receipt=self.installer_fixture(label,version)
+                    proof=self.installer_proof(candidate,label,verifier,version);receipt.write_text(json.dumps(proof))
+                    self.assertRaises(r.BuildFailure,r.validate_installer_receipt,receipt,candidate,label,SOURCE,version,'d'*64,r.sha(verifier))
+                    proof['native_gui']['external_network_requests']=0
+                    proof['native_gui']['live_mcp']=dict(status='passed',mode='stdio_no_project',initialize=True,tools_discovered=True,live_bloom_workspace=True,
+                        unsaved_text=True,current_selection=True,original_png_bytes=True,snapshot_guarded=True,loopback_connections=1,external_network_requests=0)
+                    receipt.write_text(json.dumps(proof))
+                    r.validate_installer_receipt(receipt,candidate,label,SOURCE,version,'d'*64,r.sha(verifier))
                 finally:self.root=original
 
     def test_failed_installer_retains_actual_blocked_receipt_without_passing_worker(self):
@@ -317,6 +352,13 @@ class NativePackagingTests(unittest.TestCase):
             status='passed_native_macos_package_checks', files=[row])
         inventory = directory / inventory_name; inventory.write_text(json.dumps(doc))
         self.assertEqual(len(r.validate_outputs(directory, label, SOURCE, VERSION, RECIPE, 'e'*64, 'd'*64)), 2)
+        alpha4=dict(doc,version='0.1.0-alpha.4')
+        self.assertRaises(r.BuildFailure,r.validate_mac,row,alpha4,label,SOURCE,'d'*64)
+        live_row=copy.deepcopy(row)
+        live_row['native_verification']['native_gui']['native_gui']['external_network_requests']=0
+        live_row['native_verification']['native_gui']['native_gui']['live_mcp']=dict(status='passed',mode='stdio_no_project',
+            initialize=True,tools_discovered=True,live_bloom_workspace=True,unsaved_text=True,current_selection=True,original_png_bytes=True,snapshot_guarded=True,loopback_connections=1,external_network_requests=0)
+        r.validate_mac(live_row,alpha4,label,SOURCE,'d'*64)
         for mutate in [lambda d: d['files'][0]['normalized_code_identity'].update(packaged_unsigned_sha256='2'*64),
                        lambda d: d['files'][0]['native_verification']['native_gui']['native_gui'].update(working_recovery=False),
                        lambda d: d['files'][0]['bundle']['files']['Contents/MacOS/headspace'].update(sha256='d'*64)]:

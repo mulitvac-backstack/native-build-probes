@@ -37,6 +37,22 @@ class ReleaseTests(unittest.TestCase):
             manifest.write_text(json.dumps({'archive_sha256':'not-a-digest'}))
             with self.assertRaises(r.BuildFailure):r.pinned_sdk_sha(source,'not-a-digest')
 
+    def test_alpha4_native_admission_requires_no_project_live_mcp_receipt(self):
+        live=dict(status='passed',mode='stdio_no_project',initialize=True,tools_discovered=True,live_bloom_workspace=True,unsaved_text=True,
+            current_selection=True,original_png_bytes=True,snapshot_guarded=True,loopback_connections=1,external_network_requests=0)
+        for historical in ('0.1.0-alpha.2','0.1.0-alpha.3'):
+            self.assertTrue(r.live_mcp_proof({},historical))
+        self.assertFalse(r.live_mcp_proof({},'0.1.0-alpha.4'))
+        self.assertTrue(r.live_mcp_proof(dict(live_mcp=live,external_network_requests=0),'0.1.0-alpha.4'))
+        for key,value in [('status','blocked'),('mode','saved_project'),('initialize',1),('unsaved_text',False),
+                          ('current_selection',None),('original_png_bytes',False),('tools_discovered',False),
+                              ('live_bloom_workspace',False),('snapshot_guarded',False),('loopback_connections',True),('external_network_requests',False)]:
+            self.assertFalse(r.live_mcp_proof(dict(live_mcp=dict(live,**{key:value}),external_network_requests=0),'0.1.0-alpha.4'))
+            missing=dict(live);missing.pop(key)
+            self.assertFalse(r.live_mcp_proof(dict(live_mcp=missing,external_network_requests=0),'0.1.0-alpha.4'))
+        for count in (None,False,1):
+            self.assertFalse(r.live_mcp_proof(dict(live_mcp=live,external_network_requests=count),'0.1.0-alpha.4'))
+
     def test_linux_native_gui_harness_has_cage_without_x11_test_server(self):
         workflow=(Path(__file__).parent/'.github/workflows/headspace-release.yml').read_text()
         command=next(line for line in workflow.splitlines() if 'sudo apt-get install ' in line)
